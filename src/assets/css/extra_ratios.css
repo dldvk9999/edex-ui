@@ -50,7 +50,14 @@
     }
 }
 
-@media (aspect-ratio: 64/27) { /* Commercial name of 64/27 ratio is 21:9 */
+@media (min-aspect-ratio: 2/1) and (max-aspect-ratio: 5/2) { /* 21:9-family ultrawides, e.g. 64/27, 43/18, 12/5 */
+    section#keyboard {
+        width: 98vh;
+    }
+    div.keyboard_key {
+        height: 2.7vh;
+        min-width: 2.7vh;
+    }
     div.keyboard_row#row_1 > div.keyboard_enter {
         height: 2.1vw;
         margin-top: 0.2vh;
@@ -63,6 +70,10 @@
     }
     div.keyboard_row#row_space {
         left: 1.6vw;
+    }
+
+    section.mod_column {
+        width: 15%;
     }
 
     div#mod_cpuinfo > div > div {
@@ -83,6 +94,49 @@
 
     div#mod_conninfo canvas {
         height: 8vh;
+    }
+}
+
+@media (min-aspect-ratio: 5/2) { /* super ultrawide, e.g. 32:9 (3840x1080, 5120x1440) - see #747 */
+    section#keyboard {
+        width: 78vh;
+    }
+    div.keyboard_key {
+        height: 2.2vh;
+        min-width: 2.2vh;
+    }
+    div.keyboard_row#row_1 > div.keyboard_enter {
+        height: 2.2vh;
+        margin-top: 0.2vh;
+    }
+    div.keyboard_row#row_2 > div.keyboard_enter {
+        height: 4.8vh;
+    }
+    div.keyboard_key#keyboard_spacebar {
+        width: 46vh;
+    }
+    div.keyboard_row#row_space {
+        left: 1.3vh;
+    }
+
+    /* Right-hand info columns were sized as a % of the (huge) window width,
+       leaving a large empty gap between the filesystem panel and the keyboard.
+       Cap them to a sane pixel-equivalent width based on viewport height instead. */
+    section.mod_column {
+        width: 24vh;
+    }
+    section.mod_column > h3.title {
+        width: 21vh;
+    }
+
+    div#mod_netstat_inner {
+        width: 100%;
+    }
+    div#mod_globe canvas {
+        width: 80%;
+    }
+    div#mod_conninfo canvas {
+        height: 7vh;
     }
 }
 
