@@ -40,6 +40,17 @@ const electron = require("electron");
 const remote = require("@electron/remote");
 const ipc = electron.ipcRenderer;
 
+// Clean up any extra terminal tab backends before a UI reload, so their
+// TTY/websocket servers don't leak and block reopening those tabs after
+// the reload (see #630).
+window.onbeforeunload = () => {
+    try {
+        ipc.sendSync("closeExtraTtys");
+    } catch (e) {
+        // Main process may already be tearing down, ignore
+    }
+};
+
 const settingsDir = remote.app.getPath("userData");
 const themesDir = path.join(settingsDir, "themes");
 const keyboardsDir = path.join(settingsDir, "keyboards");
@@ -550,8 +561,10 @@ window.focusShellTab = number => {
         window.term[number] = null;
 
         document.getElementById("shell_tab"+number).innerHTML = "<p>LOADING...</p>";
-        ipc.send("ttyspawn", "true");
-        ipc.once("ttyspawn-reply", (e, r) => {
+        const { nanoid } = require("nanoid/non-secure");
+        let requestId = nanoid();
+        ipc.send("ttyspawn", requestId);
+        ipc.once("ttyspawn-reply-"+requestId, (e, r) => {
             if (r.startsWith("ERROR")) {
                 document.getElementById("shell_tab"+number).innerHTML = "<p>ERROR</p>";
             } else if (r.startsWith("SUCCESS")) {
