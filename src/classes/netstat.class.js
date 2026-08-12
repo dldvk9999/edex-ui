@@ -30,10 +30,25 @@ class Netstat {
         this.failedAttempts = {};
         this.runsBeforeGeoIPUpdate = 0;
 
-        this._httpsAgent = new require("https").Agent({
-            keepAlive: false,
-            maxSockets: 10
-        });
+        let proxyUrl = window.settings.proxy || process.env.HTTPS_PROXY || process.env.https_proxy
+            || process.env.HTTP_PROXY || process.env.http_proxy || process.env.ALL_PROXY || process.env.all_proxy;
+        if (proxyUrl) {
+            try {
+                const { HttpsProxyAgent } = require("https-proxy-agent");
+                this._httpsAgent = new HttpsProxyAgent(proxyUrl);
+            } catch (e) {
+                console.error("Failed to configure proxy agent for netstat module:", e);
+                this._httpsAgent = new require("https").Agent({
+                    keepAlive: false,
+                    maxSockets: 10
+                });
+            }
+        } else {
+            this._httpsAgent = new require("https").Agent({
+                keepAlive: false,
+                maxSockets: 10
+            });
+        }
 
         // Init updaters
         this.updateInfo();

@@ -282,7 +282,29 @@ app.on('ready', async () => {
         extraTtys[basePort+i] = null;
     }
 
-    ipc.on("ttyspawn", (e, arg) => {
+    // Called by the renderer just before a UI reload (Ctrl+R / "Reload UI").
+    // Without this, extra terminal tabs' backend TTYs and websocket servers
+    // survive the reload while the renderer's tab state is wiped, leaking
+    // shells/ports and crashing the app when a previously-open tab is
+    // reopened after a few reloads (see #630).
+    ipc.on("closeExtraTtys", e => {
+        Object.keys(extraTtys).forEach(key => {
+            if (extraTtys[key] !== null) {
+                try {
+                    extraTtys[key].onclosed = () => {};
+                    extraTtys[key].ondisconnected = () => {};
+                    extraTtys[key].close();
+                    extraTtys[key].wss.close();
+                } catch (err) {
+                    // Already closed/closing, ignore
+                }
+                extraTtys[key] = null;
+            }
+        });
+        e.returnValue = true;
+    });
+
+    ipc.on("ttyspawn", (e, requestId) => {
         let port = null;
         Object.keys(extraTtys).forEach(key => {
             if (extraTtys[key] === null && port === null) {
@@ -293,7 +315,7 @@ app.on('ready', async () => {
 
         if (port === null) {
             signale.error("TTY spawn denied (Reason: exceeded max TTYs number)");
-            e.sender.send("ttyspawn-reply", "ERROR: max number of ttys reached");
+            e.sender.send("ttyspawn-reply-"+requestId, "ERROR: max number of ttys reached");
         } else {
             signale.pending(`Creating new TTY process on port ${port}`);
             let term = new Terminal({
@@ -325,7 +347,7 @@ app.on('ready', async () => {
             };
 
             extraTtys[port] = term;
-            e.sender.send("ttyspawn-reply", "SUCCESS: "+port);
+            e.sender.send("ttyspawn-reply-"+requestId, "SUCCESS: "+port);
         }
     });
 

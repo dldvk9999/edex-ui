@@ -425,9 +425,19 @@ class Terminal {
                 verifyClient: info => {
                     if (this.wss.clients.length >= 1) {
                         return false;
-                    } else {
-                        return true;
                     }
+
+                    // Fix for GHSA-q8xc-f2wf-ffh9: cross-site websocket hijacking (CSWSH).
+                    // Browsers always set an Origin header, even for ws:// requests coming
+                    // from a webpage. The Electron renderer loading local app files does not
+                    // send one (or sends "file://"). Reject anything that looks like it came
+                    // from a real website so a malicious page can't hijack the shell socket.
+                    const origin = info.origin || info.req.headers.origin;
+                    if (origin && origin !== "file://") {
+                        return false;
+                    }
+
+                    return true;
                 }
             });
             this.Ipc.on("terminal_channel-"+this.port, (e, ...args) => {
