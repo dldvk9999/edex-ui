@@ -64,6 +64,25 @@ window.settings = require(settingsFile);
 window.shortcuts = require(shortcutsFile);
 window.lastWindowState = require(lastWindowStateFile);
 
+// Support for proxies/regulated networks (see #1050).
+// Applies to our own network calls (update checker, external IP lookup)
+// as well as third-party modules (e.g. geolite2-redist) that use Node's
+// https.get() without specifying their own agent, since those default
+// to https.globalAgent.
+(() => {
+    let proxyUrl = window.settings.proxy || process.env.HTTPS_PROXY || process.env.https_proxy
+        || process.env.HTTP_PROXY || process.env.http_proxy || process.env.ALL_PROXY || process.env.all_proxy;
+    if (!proxyUrl) return;
+    try {
+        const { HttpsProxyAgent } = require("https-proxy-agent");
+        let agent = new HttpsProxyAgent(proxyUrl);
+        require("https").globalAgent = agent;
+        require("http").globalAgent = agent;
+    } catch (e) {
+        console.error("Failed to configure proxy agent:", e);
+    }
+})();
+
 // Load CLI parameters
 if (remote.process.argv.includes("--nointro")) {
     window.settings.nointroOverride = true;
