@@ -6,9 +6,9 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Cache node modules
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       env:
         cache-name: cache-node-modules
       with:
@@ -16,7 +16,7 @@ jobs:
         path: ~/.npm
         key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
     - name: Cache Electron binaries
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       env:
         cache-name: cache-electron-bins
       with:
@@ -29,11 +29,16 @@ jobs:
         sudo apt update
         sudo apt install libc6-dev-i386 gcc-multilib g++-multilib
     - name: Setup Node.js
-      uses: actions/setup-node@v1
+      uses: actions/setup-node@v4
       with:
         node-version: 14
     - name: Setup npm
-      run: sudo npm i -g npm@7
+      run: npm i -g npm@7
+    - name: Patch bundled node-gyp for modern Python
+      run: |
+        GYP_INPUT="$(npm root -g)/npm/node_modules/node-gyp/gyp/pylib/gyp/input.py"
+        sed -i "s/open(build_file_path, ['\"]rU['\"])/open(build_file_path, 'r')/" "$GYP_INPUT"
+        grep -n "open(build_file_path" "$GYP_INPUT"
     - name: Install build deps
       run: npm install
     - name: Run prebuild script
@@ -42,7 +47,7 @@ jobs:
       run: ./node_modules/.bin/electron-builder build -l --x64 --ia32
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v4
       with:
         name: Linux-AppImages
         path: dist/*.AppImage
@@ -51,13 +56,13 @@ jobs:
   build-linux-arm32:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Setup QEMU
       uses: docker/setup-qemu-action@v1
       with:
         platforms: arm
     - name: Cache node modules
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       env:
         cache-name: cache-node-modules
       with:
@@ -65,7 +70,7 @@ jobs:
         path: ~/.npm
         key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
     - name: Cache Electron binaries
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       env:
         cache-name: cache-electron-bins
       with:
@@ -81,7 +86,7 @@ jobs:
         args: bash -c "npm i -g npm@7 && npm install && ./node_modules/.bin/electron-builder build -l --armv7l"
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v4
       with:
         name: Linux-arm32-AppImage
         path: dist/*.AppImage
@@ -90,13 +95,13 @@ jobs:
   build-linux-arm64:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Setup QEMU
       uses: docker/setup-qemu-action@v1
       with:
         platforms: arm64
     - name: Cache node modules
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       env:
         cache-name: cache-node-modules
       with:
@@ -104,7 +109,7 @@ jobs:
         path: ~/.npm
         key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
     - name: Cache Electron binaries
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       env:
         cache-name: cache-electron-bins
       with:
@@ -120,26 +125,27 @@ jobs:
         args: bash -c "npm i -g npm@7 && npm install && ./node_modules/.bin/electron-builder build -l --arm64"
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v4
       with:
         name: Linux-arm64-AppImage
         path: dist/*.AppImage
         if-no-files-found: error
 
   build-windows:
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
     - name: Get npm cache directory
       id: npm-cache
+      shell: bash
       run: |
-        echo "::set-output name=dir::$(npm config get cache)"
-    - uses: actions/cache@v2
+        echo "dir=$(npm config get cache)" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@v4
       with:
         path: ${{ steps.npm-cache.outputs.dir }}
         key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
     - name: Cache Electron binaries
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       env:
         cache-name: cache-electron-bins
       with:
@@ -148,18 +154,51 @@ jobs:
         path: ~/AppData/Local/electron/Cache
         key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
     - name: Setup Node.js
-      uses: actions/setup-node@v1
+      uses: actions/setup-node@v4
       with:
         node-version: 14
     - name: Setup npm
       run: npm i -g npm@7
+    - name: Work around missing openssl_fips gyp var in old Electron headers
+      shell: bash
+      run: npm config set openssl_fips "" --global
+    - name: Setup Python build deps
+      shell: bash
+      run: python -m pip install setuptools
+    - name: Replace bundled node-gyp (VS2022 detection bug)
+      shell: bash
+      run: |
+        NPM_GYP_DIR="$(npm root -g)/npm/node_modules/node-gyp"
+        mkdir -p "$RUNNER_TEMP/gyp-replacement"
+        cd "$RUNNER_TEMP/gyp-replacement"
+        npm init -y --silent
+        npm install node-gyp@9 --silent
+        # npm hoists node-gyp's own deps up to the top-level node_modules
+        # instead of nesting them under node_modules/node-gyp - merge them
+        # back in so the copied folder is fully self-contained.
+        cd node_modules
+        for d in */; do
+          d="${d%/}"
+          [ "$d" = "node-gyp" ] && continue
+          mkdir -p "node-gyp/node_modules"
+          cp -r "$d" "node-gyp/node_modules/"
+        done
+        rm -rf "$NPM_GYP_DIR"
+        cp -r node-gyp "$NPM_GYP_DIR"
+        node "$NPM_GYP_DIR/bin/node-gyp.js" --version
     - name: npm install
-      run: npm install
+      shell: bash
+      run: |
+        for i in 1 2 3; do
+          npm install && break
+          echo "npm install failed (attempt $i), retrying..."
+          sleep 10
+        done
     - name: npm build
       run: npm run build-windows
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v4
       with:
         name: Windows-Installer
         path: dist/*.exe
@@ -168,9 +207,9 @@ jobs:
   build-darwin:
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
     - name: Cache node modules
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       env:
         cache-name: cache-node-modules
       with:
@@ -178,7 +217,7 @@ jobs:
         path: ~/.npm
         key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
     - name: Cache Electron binaries
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       env:
         cache-name: cache-electron-bins
       with:
@@ -187,18 +226,39 @@ jobs:
         path: ~/Library/Caches/electron
         key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
     - name: Setup Node.js
-      uses: actions/setup-node@v1
+      uses: actions/setup-node@v4
       with:
-        node-version: 14
+        node-version: 18
     - name: Setup npm
-      run: sudo npm i -g npm@7
+      run: sudo npm i -g npm@7 && sudo chown -R $(id -u):$(id -g) ~/.npm
+    - name: Work around missing openssl_fips gyp var in old Electron headers
+      run: npm config set openssl_fips "" --global
+    - name: Setup Python build deps
+      run: pip3 install --break-system-packages setuptools
+    - name: Replace bundled node-gyp (old gyp bugs on modern Python/Electron headers)
+      run: |
+        NPM_GYP_DIR="$(sudo npm root -g)/npm/node_modules/node-gyp"
+        mkdir -p /tmp/gyp-replacement
+        cd /tmp/gyp-replacement
+        npm init -y --silent
+        npm install node-gyp@9 --silent
+        cd node_modules
+        for d in */; do
+          d="${d%/}"
+          [ "$d" = "node-gyp" ] && continue
+          mkdir -p "node-gyp/node_modules"
+          cp -r "$d" "node-gyp/node_modules/"
+        done
+        sudo rm -rf "$NPM_GYP_DIR"
+        sudo cp -r node-gyp "$NPM_GYP_DIR"
+        node "$NPM_GYP_DIR/bin/node-gyp.js" --version
     - name: npm install
       run: npm install
     - name: npm build
       run: npm run build-darwin
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v4
       with:
         name: MacOS-Image
         path: dist/*.dmg
