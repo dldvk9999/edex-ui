@@ -193,6 +193,8 @@ jobs:
         node-version: 18
     - name: Setup npm
       run: sudo npm i -g npm@7 && sudo chown -R $(id -u):$(id -g) ~/.npm
+    - name: Setup Python build deps
+      run: pip3 install --break-system-packages setuptools
     - name: npm install
       run: npm install
     - name: npm build
