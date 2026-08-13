@@ -192,7 +192,7 @@ jobs:
       with:
         node-version: 18
     - name: Setup npm
-      run: sudo npm i -g npm@7
+      run: sudo npm i -g npm@7 && sudo chown -R $(id -u):$(id -g) ~/.npm
     - name: npm install
       run: npm install
     - name: npm build
