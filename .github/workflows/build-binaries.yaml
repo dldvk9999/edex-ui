@@ -190,7 +190,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: 14
+        node-version: 18
     - name: Setup npm
       run: sudo npm i -g npm@7
     - name: npm install
