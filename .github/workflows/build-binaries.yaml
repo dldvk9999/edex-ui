@@ -33,11 +33,12 @@ jobs:
       with:
         node-version: 14
     - name: Setup npm
-      run: sudo npm i -g npm@7
-    - name: Install modern node-gyp
+      run: npm i -g npm@7
+    - name: Patch bundled node-gyp for modern Python
       run: |
-        sudo npm install -g node-gyp@9
-        echo "npm_config_node_gyp=$(npm root -g)/node-gyp/bin/node-gyp.js" >> "$GITHUB_ENV"
+        GYP_INPUT="$(npm root -g)/npm/node_modules/node-gyp/gyp/pylib/gyp/input.py"
+        sed -i "s/open(build_file_path, ['\"]rU['\"])/open(build_file_path, 'r')/" "$GYP_INPUT"
+        grep -n "open(build_file_path" "$GYP_INPUT"
     - name: Install build deps
       run: npm install
     - name: Run prebuild script
@@ -158,11 +159,17 @@ jobs:
         node-version: 14
     - name: Setup npm
       run: npm i -g npm@7
-    - name: Install modern node-gyp
+    - name: Replace bundled node-gyp (VS2022 detection bug)
       shell: bash
       run: |
-        npm install -g node-gyp@9
-        echo "npm_config_node_gyp=$(npm root -g)/node-gyp/bin/node-gyp.js" >> "$GITHUB_ENV"
+        NPM_GYP_DIR="$(npm root -g)/npm/node_modules/node-gyp"
+        mkdir -p "$RUNNER_TEMP/gyp-replacement"
+        cd "$RUNNER_TEMP/gyp-replacement"
+        npm init -y --silent
+        npm install node-gyp@9 --silent
+        rm -rf "$NPM_GYP_DIR"
+        cp -r node_modules/node-gyp "$NPM_GYP_DIR"
+        node "$NPM_GYP_DIR/bin/node-gyp.js" --version
     - name: npm install
       run: npm install
     - name: npm build
@@ -202,12 +209,11 @@ jobs:
         node-version: 18
     - name: Setup npm
       run: sudo npm i -g npm@7 && sudo chown -R $(id -u):$(id -g) ~/.npm
-    - name: Setup Python build deps
-      run: pip3 install --break-system-packages setuptools
-    - name: Install modern node-gyp
+    - name: Patch bundled node-gyp for modern Python
       run: |
-        sudo npm install -g node-gyp@9
-        echo "npm_config_node_gyp=$(npm root -g)/node-gyp/bin/node-gyp.js" >> "$GITHUB_ENV"
+        GYP_INPUT="$(sudo npm root -g)/npm/node_modules/node-gyp/gyp/pylib/gyp/input.py"
+        sudo sed -i '' "s/open(build_file_path, ['\"]rU['\"])/open(build_file_path, 'r')/" "$GYP_INPUT"
+        grep -n "open(build_file_path" "$GYP_INPUT"
     - name: npm install
       run: npm install
     - name: npm build
