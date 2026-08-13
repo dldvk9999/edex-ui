@@ -1,0 +1,23 @@
+input#terminalSearch {
+	width: 100%;
+    background: var(--color_light_black);
+    color: rgb(var(--color_r), var(--color_g), var(--color_b));
+    border: 0.15vh solid rgb(var(--color_r), var(--color_g), var(--color_b));
+    padding: 0.4vh 0.2vh;
+    font-size: 1.4vh;
+    box-sizing: border-box;
+    margin-bottom: 1vh;
+}
+
+input#terminalSearch:active, input#terminalSearch:focus {
+    outline: none !important;
+    background: rgb(var(--color_r), var(--color_g), var(--color_b));
+    color: var(--color_light_black);
+}
+
+p#terminalSearch-status {
+    font-family: var(--font_main);
+    font-size: 1.3vh;
+    color: var(--color_red, #ff5555);
+    min-height: 1.6vh;
+}

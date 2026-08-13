@@ -914,6 +914,7 @@ window.openShortcutsHelp = () => {
         "SETTINGS": "Open the settings editor.",
         "SHORTCUTS": "List and edit available keyboard shortcuts.",
         "FUZZY_SEARCH": "Search for entries in the current working directory.",
+        "FIND_IN_TERMINAL": "Search for text in the current terminal's scrollback buffer.",
         "FS_LIST_VIEW": "Toggle between list and grid view in the file browser.",
         "FS_DOTFILES": "Toggle hidden files and directories in the file browser.",
         "KB_PASSMODE": "Toggle the on-screen keyboard's \"Password Mode\", which allows you to safely<br>type sensitive information even if your screen might be recorded (disable visual input feedback).",
@@ -1053,6 +1054,9 @@ window.useAppShortcut = action => {
             return true;
         case "FUZZY_SEARCH":
             window.activeFuzzyFinder = new FuzzyFinder();
+            return true;
+        case "FIND_IN_TERMINAL":
+            window.activeTerminalSearch = new TerminalSearch();
             return true;
         case "FS_LIST_VIEW":
             window.fsDisp.toggleListview();
