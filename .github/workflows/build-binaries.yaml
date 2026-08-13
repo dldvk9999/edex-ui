@@ -184,7 +184,13 @@ jobs:
         cp -r node-gyp "$NPM_GYP_DIR"
         node "$NPM_GYP_DIR/bin/node-gyp.js" --version
     - name: npm install
-      run: npm install
+      shell: bash
+      run: |
+        for i in 1 2 3; do
+          npm install && break
+          echo "npm install failed (attempt $i), retrying..."
+          sleep 10
+        done
     - name: npm build
       run: npm run build-windows
       env:
@@ -224,11 +230,23 @@ jobs:
       run: sudo npm i -g npm@7 && sudo chown -R $(id -u):$(id -g) ~/.npm
     - name: Setup Python build deps
       run: pip3 install --break-system-packages setuptools
-    - name: Patch bundled node-gyp for modern Python
+    - name: Replace bundled node-gyp (old gyp bugs on modern Python/Electron headers)
       run: |
-        GYP_INPUT="$(sudo npm root -g)/npm/node_modules/node-gyp/gyp/pylib/gyp/input.py"
-        sudo sed -i '' "s/open(build_file_path, ['\"]rU['\"])/open(build_file_path, 'r')/" "$GYP_INPUT"
-        grep -n "open(build_file_path" "$GYP_INPUT"
+        NPM_GYP_DIR="$(sudo npm root -g)/npm/node_modules/node-gyp"
+        mkdir -p /tmp/gyp-replacement
+        cd /tmp/gyp-replacement
+        npm init -y --silent
+        npm install node-gyp@9 --silent
+        cd node_modules
+        for d in */; do
+          d="${d%/}"
+          [ "$d" = "node-gyp" ] && continue
+          mkdir -p "node-gyp/node_modules"
+          cp -r "$d" "node-gyp/node_modules/"
+        done
+        sudo rm -rf "$NPM_GYP_DIR"
+        sudo cp -r node-gyp "$NPM_GYP_DIR"
+        node "$NPM_GYP_DIR/bin/node-gyp.js" --version
     - name: npm install
       run: npm install
     - name: npm build
