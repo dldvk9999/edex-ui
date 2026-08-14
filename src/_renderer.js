@@ -489,11 +489,11 @@ async function initUI() {
     let shellContainer = document.getElementById("main_shell");
     shellContainer.innerHTML += `
         <ul id="main_shell_tabs">
-            <li id="shell_tab0" onclick="window.focusShellTab(0);" class="active"><p>MAIN SHELL</p></li>
-            <li id="shell_tab1" onclick="window.focusShellTab(1);"><p>EMPTY</p></li>
-            <li id="shell_tab2" onclick="window.focusShellTab(2);"><p>EMPTY</p></li>
-            <li id="shell_tab3" onclick="window.focusShellTab(3);"><p>EMPTY</p></li>
-            <li id="shell_tab4" onclick="window.focusShellTab(4);"><p>EMPTY</p></li>
+            <li id="shell_tab0" onclick="window.focusShellTab(0);" ondblclick="window.renameShellTab(0);" class="active"><p>MAIN SHELL</p></li>
+            <li id="shell_tab1" onclick="window.focusShellTab(1);" ondblclick="window.renameShellTab(1);"><p>EMPTY</p></li>
+            <li id="shell_tab2" onclick="window.focusShellTab(2);" ondblclick="window.renameShellTab(2);"><p>EMPTY</p></li>
+            <li id="shell_tab3" onclick="window.focusShellTab(3);" ondblclick="window.renameShellTab(3);"><p>EMPTY</p></li>
+            <li id="shell_tab4" onclick="window.focusShellTab(4);" ondblclick="window.renameShellTab(4);"><p>EMPTY</p></li>
         </ul>
         <div id="main_shell_innercontainer">
             <pre id="terminal0" class="active"></pre>
@@ -510,8 +510,11 @@ async function initUI() {
         })
     };
     window.currentTerm = 0;
+    window.tabNames = {};
+    window.tabProcessNames = {};
     window.term[0].onprocesschange = p => {
-        document.getElementById("shell_tab0").innerHTML = `<p>MAIN - ${p}</p>`;
+        window.tabProcessNames[0] = p;
+        window.updateShellTabLabel(0, p);
     };
     // Prevent losing hardware keyboard focus on the terminal when using touch keyboard
     window.onmouseup = e => {
@@ -597,6 +600,8 @@ window.focusShellTab = number => {
 
                 window.term[number].onclose = e => {
                     delete window.term[number].onprocesschange;
+                    delete window.tabNames[number];
+                    delete window.tabProcessNames[number];
                     document.getElementById("shell_tab"+number).innerHTML = "<p>EMPTY</p>";
                     document.getElementById("terminal"+number).innerHTML = "";
                     window.term[number].term.dispose();
@@ -605,7 +610,8 @@ window.focusShellTab = number => {
                 };
 
                 window.term[number].onprocesschange = p => {
-                    document.getElementById("shell_tab"+number).innerHTML = `<p>#${number+1} - ${p}</p>`;
+                    window.tabProcessNames[number] = p;
+                    window.updateShellTabLabel(number, p);
                 };
 
                 document.getElementById("shell_tab"+number).innerHTML = `<p>::${port}</p>`;
@@ -614,6 +620,76 @@ window.focusShellTab = number => {
                 }, 500);
             }
         });
+    }
+};
+
+// Renders a shell tab's label: the user-set custom name takes priority
+// over the default "MAIN - <process>" / "#N - <process>" label.
+window._escapeHTML = str => String(str).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
+}[c]));
+
+window.updateShellTabLabel = (number, processName) => {
+    let el = document.getElementById("shell_tab"+number);
+    if (!el) return;
+
+    if (window.tabNames[number]) {
+        el.innerHTML = `<p>${window._escapeHTML(window.tabNames[number])}</p>`;
+        return;
+    }
+
+    if (number === 0) {
+        el.innerHTML = `<p>MAIN - ${processName}</p>`;
+    } else {
+        el.innerHTML = `<p>#${number+1} - ${processName}</p>`;
+    }
+};
+
+// Prompts for a custom tab name (#10-todo.md - "Tab renaming / reordering").
+window.renameShellTab = number => {
+    if (!window.term[number] || document.getElementById("settingsEditor")) return;
+
+    window.keyboard.detach();
+    let modal = new Modal({
+        type: "custom",
+        title: "Rename Tab",
+        html: `<input type="text" id="tabRenameInput" maxlength="20" placeholder="Tab name..." value="${window._escapeHTML(window.tabNames[number] || "")}" />`,
+        buttons: [
+            {label: "Reset", action: `window.applyTabRename(${number}, true)`},
+            {label: "Rename", action: `window.applyTabRename(${number})`}
+        ]
+    }, () => {
+        window.keyboard.attach();
+        window.term[window.currentTerm].term.focus();
+    });
+
+    window.activeTabRenameModal = modal;
+
+    let input = document.getElementById("tabRenameInput");
+    input.focus();
+    input.select();
+    input.addEventListener("keydown", e => {
+        if (e.key === "Enter") {
+            window.applyTabRename(number);
+            e.preventDefault();
+        }
+    });
+};
+
+window.applyTabRename = (number, reset) => {
+    let input = document.getElementById("tabRenameInput");
+    let value = (!reset && input) ? input.value.trim().slice(0, 20) : "";
+
+    if (value) {
+        window.tabNames[number] = value;
+    } else {
+        delete window.tabNames[number];
+    }
+    window.updateShellTabLabel(number, window.tabProcessNames[number] || "");
+
+    if (window.activeTabRenameModal) {
+        window.activeTabRenameModal.close();
+        delete window.activeTabRenameModal;
     }
 };
 
