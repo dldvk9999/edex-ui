@@ -288,6 +288,11 @@ class FilesystemDisplay {
         };
 
         this.render = async (originBlockList, isDiskView) => {
+            // Keep fsDisp.cwd in sync with whatever's actually on screen, so
+            // that click handlers referencing fsDisp.cwd[blockIndex] (used to
+            // avoid embedding raw file/path strings into inline onclick JS)
+            // resolve correctly in disk view too, not just regular listings.
+            this.cwd = originBlockList;
             // Work on a clone of the blocklist to avoid altering fsDisp.cwd
             let blockList = JSON.parse(JSON.stringify(originBlockList));
 
@@ -327,9 +332,9 @@ class FilesystemDisplay {
                         cmd = `window.term[window.currentTerm].writelr("cd ..")`;
                     } else if (e.type === "disk" || e.type === "rom" || e.type === "usb") {
                         if (process.platform === "win32") {
-                            cmd = `window.term[window.currentTerm].writelr("${e.path.replace(/\\/g, '')}")`;
+                            cmd = `window.term[window.currentTerm].writelr(fsDisp.cwd[${blockIndex}].path.replace(/\\\\/g, ""))`;
                         } else {
-                            cmd = `window.term[window.currentTerm].writelr("cd \\"${e.path.replace(/\\/g, '')}\\"")`;
+                            cmd = `window.term[window.currentTerm].writelr("cd \\""+fsDisp.cwd[${blockIndex}].path.replace(/\\\\/g, "")+"\\"")`;
                         }
                     } else {
                         cmd = `window.term[window.currentTerm].write("\\""+fsDisp.cwd[${blockIndex}].path+"\\"")`;
@@ -340,7 +345,7 @@ class FilesystemDisplay {
                     } else if (e.type === "up") {
                         cmd = `window.fsDisp.readFS(path.resolve(window.fsDisp.dirpath, ".."))`;
                     } else if (e.type === "disk" || e.type === "rom" || e.type === "usb") {
-                        cmd = `window.fsDisp.readFS("${e.path.replace(/\\/g, '')}")`;
+                        cmd = `window.fsDisp.readFS(fsDisp.cwd[${blockIndex}].path.replace(/\\\\/g, ""))`;
                     } else {
                         cmd = `window.term[window.currentTerm].write("\\""+fsDisp.cwd[${blockIndex}].path+"\\"")`;
                     }
@@ -367,10 +372,10 @@ class FilesystemDisplay {
                 }
 
                 if (e.type === "edex-theme") {
-                    cmd = `window.themeChanger("${e.name.slice(0, -5)}")`;
+                    cmd = `window.themeChanger(fsDisp.cwd[${blockIndex}].name.slice(0, -5))`;
                 }
                 if (e.type === "edex-kblayout") {
-                    cmd = `window.remakeKeyboard("${e.name.slice(0, -5)}")`;
+                    cmd = `window.remakeKeyboard(fsDisp.cwd[${blockIndex}].name.slice(0, -5))`;
                 }
                 if (e.type === "edex-settings") {
                     cmd = `window.openSettings()`;
@@ -624,9 +629,9 @@ class FilesystemDisplay {
                                 {
                                     type: "custom",
                                     title: _escapeHtml(name),
-                                    html: `<textarea id="fileEdit" rows="40" cols="150" spellcheck="false">${data}</textarea><p id="fedit-status"></p>`,
+                                    html: `<textarea id="fileEdit" rows="40" cols="150" spellcheck="false">${_escapeHtml(data)}</textarea><p id="fedit-status"></p>`,
                                     buttons: [
-                                        {label:"Save to Disk",action:`window.writeFile('${block.path}')`}
+                                        {label:"Save to Disk",action:`window.writeFile('${window._escapeJsString(block.path)}')`}
                                     ]
                                 }, () => {
                                     window.keyboard.attach();

@@ -13,6 +13,14 @@ window._escapeHtml = text => {
     };
     return text.replace(/[&<>"']/g, m => {return map[m];});
 };
+// For values interpolated into a single-quoted JS string literal that itself
+// lives inside an HTML attribute (e.g. onclick='someFn(\'${value}\')').
+// HTML-escaping alone does NOT protect this context: browsers HTML-decode
+// attribute values (e.g. &quot; -> ") before treating them as JS source, so
+// an HTML-escaped quote can still break out of the string at execution time.
+window._escapeJsString = text => {
+    return String(text).replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+};
 window._encodePathURI = uri => {
     return encodeURI(uri).replace(/#/g, "%23");
 };

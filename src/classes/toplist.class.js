@@ -48,7 +48,7 @@ class Toplist {
             list.forEach(proc => {
                 let el = document.createElement("tr");
                 el.innerHTML = `<td>${proc.pid}</td>
-                                <td><strong>${proc.name}</strong></td>
+                                <td><strong>${window._escapeHtml(String(proc.name))}</strong></td>
                                 <td>${Math.round(proc.cpu*10)/10}%</td>
                                 <td>${Math.round(proc.mem*10)/10}%</td>`;
                 document.getElementById("mod_toplist_table").append(el);
@@ -178,11 +178,11 @@ class Toplist {
                     list.forEach(proc => {
                         let el = document.createElement("tr");
                         el.innerHTML = `<td class="pid">${proc.pid}</td>
-                            <td class="name">${proc.name}</td>
-                            <td class="user">${proc.user}</td>
+                            <td class="name">${window._escapeHtml(String(proc.name))}</td>
+                            <td class="user">${window._escapeHtml(String(proc.user))}</td>
                             <td class="cpu">${Math.round(proc.cpu * 10) / 10}%</td>
                             <td class="mem">${Math.round(proc.mem * 10) / 10}%</td>
-                            <td class="state">${proc.state}</td>
+                            <td class="state">${window._escapeHtml(String(proc.state))}</td>
                             <td class="started">${proc.started}</td>
                             <td class="runtime">${formatRuntime(proc.runtime)}</td>`;
                         document.getElementById("processList").append(el);

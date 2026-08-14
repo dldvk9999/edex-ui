@@ -6,7 +6,14 @@ class DocReader {
         const scale = 1;
         const canvas = document.getElementById(modalElementId).querySelector(".pdf_canvas");
         const context = canvas.getContext('2d');
-        const loadingTask = pdfjsLib.getDocument(path);
+        // CVE-2024-4367 (GHSA-wgrm-67xf-hhpq): pdfjs-dist <=4.1.392 executes
+        // attacker-controlled JS from a malicious PDF via eval() when
+        // isEvalSupported is left at its default of true. The real fix
+        // (pdfjs-dist >=4.2.67) requires Node >=18, which this Electron 12
+        // build doesn't have - so pin the documented workaround here until
+        // the Electron/Node runtime itself can be upgraded.
+        const pdfOptions = { url: path, isEvalSupported: false };
+        const loadingTask = pdfjsLib.getDocument(pdfOptions);
         let pdfDoc = null,
             pageNum = 1,
             pageRendering = false,
@@ -83,7 +90,7 @@ class DocReader {
         document.getElementById(modalElementId).querySelector(".zoom_in").addEventListener('click', this.zoomIn);
         document.getElementById(modalElementId).querySelector(".zoom_out").addEventListener('click', this.zoomOut);
 
-        pdfjsLib.getDocument(path).promise.then((pdfDoc_) => {
+        loadingTask.promise.then((pdfDoc_) => {
             pdfDoc = pdfDoc_;
             document.getElementById(modalElementId).querySelector(".page_count").textContent = pdfDoc.numPages;
             this.renderPage(pageNum);
