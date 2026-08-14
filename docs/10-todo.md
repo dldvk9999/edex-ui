@@ -1,6 +1,13 @@
 # 10. Feature TODO / Proposals
 
-A list of features worth considering for future work, gathered by researching community requests (GitHub issues/discussions on the archived upstream repo) and by direct analysis of the current codebase. None of these are implemented yet.
+A list of features worth considering for future work, gathered by researching community requests (GitHub issues/discussions on the archived upstream repo) and by direct analysis of the current codebase.
+
+## 10.0 Completed
+
+| Feature | Notes |
+|---|---|
+| ~~In-terminal search (Find)~~ | Done — `xterm-addon-search` wired into the `Terminal` client class, bound to `Ctrl+Shift+G` via a new `TerminalSearch` modal. See `src/classes/terminalSearch.class.js`. |
+| ~~Tab renaming~~ | Done — double-click a shell tab to give it a custom name via a rename modal (`window.renameShellTab`/`window.tabNames` in `src/_renderer.js`). Custom names survive process/cwd changes but are **not persisted across app restarts** — see 10.2 below, this was split out as a separate follow-up rather than done as part of the same change. |
 
 ## 10.1 Long-Requested by the Community (never implemented upstream)
 
@@ -18,9 +25,8 @@ A list of features worth considering for future work, gathered by researching co
 | Feature | Description | Estimated effort |
 |---|---|---|
 | **In-app settings UI** | `settings.json`/`shortcuts.json` must currently be edited by hand in a text editor — there is no GUI settings panel at all. Likely the highest-impact usability improvement. | Medium-high (new module + IPC surface expansion) |
-| **In-terminal search (Find)** | `xterm.js` officially supports `xterm-addon-search`, but this project doesn't use it. Would let users search terminal scrollback for text. | Low (just wire up an existing addon) |
-| **Session/layout save & restore** | Open tabs and their CWDs are lost on every app restart. An option to restore the last session would help. | Medium |
-| **Tab renaming / reordering** | Tabs are currently fixed-numbered; there's no way to give them a custom name. | Low |
+| **Tab reordering (drag-and-drop)** | Split out from the original "Tab renaming / reordering" item once renaming was implemented — reordering turned out to be a bigger job than initially estimated: tabs 1-4 are bound to fixed websocket ports/array indices, and the `TAB_1`..`TAB_5` keyboard shortcuts assume a fixed number-to-tab mapping. Doing this properly means decoupling tab *display order* from the underlying port/index, not just a low-effort UI tweak. | Medium (re-estimated from the original "Low") |
+| **Session/layout save & restore** | Open tabs and their CWDs are lost on every app restart. An option to restore the last session would help. Custom tab names (see 10.0) would be a natural thing to persist as part of this, since they currently reset on restart. | Medium |
 | **SSH profile manager** | Save frequently-used SSH hosts for one-click connect — a common feature in terminal emulators that's missing here. | Medium |
 | **Split panes** | Only tabs exist today; no way to view multiple terminals side-by-side in one screen. | High (needs a new layout engine) |
 | **Accessibility (a11y) improvements** | No screen-reader support, no full keyboard-only navigation. | Medium-high |
@@ -31,8 +37,10 @@ A list of features worth considering for future work, gathered by researching co
 
 ## 10.4 Suggested Starting Points
 
-If picking a place to start, the best effort-to-impact ratio is likely:
-1. **In-terminal search** — low effort, immediately useful, existing xterm.js addon does the heavy lifting.
-2. **In-app settings UI** — higher effort, but addresses the single biggest usability gap (hand-editing JSON to change any setting).
+Remaining low/medium effort items, roughly in order:
+1. **In-app settings UI** — highest-impact remaining usability gap (hand-editing JSON to change any setting).
+2. **Session/layout save & restore** — pairs naturally with persisting the tab names added in 10.0.
+3. **Tab reordering** — now understood to need real port/index decoupling, so treat as its own scoped task rather than bundling it with quick wins.
 
 The plugin/module system is the most-requested item historically, but requires a real architecture change (a stable module API, sandboxing considerations, etc.) rather than an incremental feature, so it's a bigger undertaking than the others on this list.
+
