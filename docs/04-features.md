@@ -40,7 +40,7 @@
 - **Themes**: 21 built-in themes (JSON, defining colors/fonts/terminal/globe colors) — tron, matrix, blade, cyborg, nord, red, apollo, interstellar, chalkboard, navy, and more, many with variant suffixes (`-notype`, `-disrupted`, `-ligatures`, `-focus`, etc.)
 - **Keyboard override**: runtime hot-swap
 - **CSS injection**: arbitrary CSS can be injected via a theme JSON's `injectCSS` field
-- **Shortcut customization**: `shortcuts.json` — supports both app actions and arbitrary shell command execution
+- **Shortcut customization**: `shortcuts.json` — supports both app actions and arbitrary shell command execution, editable in-app via `Ctrl+Shift+K` (add/remove custom command shortcuts, edit triggers, toggle enabled - takes effect immediately, no reload needed) as well as by hand-editing the file
 - **Sound pack**: toggleable sound effects with volume control (13 wav files — boot, keypress, access granted/denied, alarm, panel switching, etc.)
 - **Proxy support** (`#1050`, added in a recent session): `settings.proxy` or standard `HTTP(S)_PROXY` environment variables for use on restricted networks
 

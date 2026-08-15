@@ -1085,7 +1085,10 @@ window.toggleFullScreen = () => {
     fs.writeFileSync(lastWindowStateFile, JSON.stringify(window.lastWindowState, "", 4));
 };
 
-// Display available keyboard shortcuts and custom shortcuts helper
+// Display available keyboard shortcuts, editable in-app (docs/10-todo.md 10.2
+// "Editable shortcuts UI"). App-type entries (built-in actions) only allow
+// editing trigger/enabled, since their `action` is a fixed known value.
+// Shell-type (custom command) entries are fully editable and can be added/removed.
 window.openShortcutsHelp = () => {
     if (document.getElementById("settingsEditor")) return;
 
@@ -1109,24 +1112,26 @@ window.openShortcutsHelp = () => {
     let appList = "";
     window.shortcuts.filter(e => e.type === "app").forEach(cut => {
         let action = (cut.action.startsWith("TAB_")) ? "TAB_X" : cut.action;
+        let hint = (cut.action === "TAB_X") ? ` title="Keep the letter X in the trigger - it gets replaced with 1-5 to build each tab's shortcut"` : "";
 
-        appList += `<tr>
-                        <td>${(cut.enabled) ? 'YES' : 'NO'}</td>
-                        <td><input disabled type="text" maxlength=25 value="${cut.trigger}"></td>
+        appList += `<tr data-shortcut-row="app" data-action="${window._escapeHTML(cut.action)}">
+                        <td><input type="checkbox" class="shortcutsHelp-enabled" ${cut.enabled ? "checked" : ""}></td>
+                        <td><input type="text" class="shortcutsHelp-trigger" maxlength=25 value="${window._escapeHTML(cut.trigger)}"${hint}></td>
                         <td>${shortcutsDefinition[action]}</td>
                     </tr>`;
     });
 
     let customList = "";
     window.shortcuts.filter(e => e.type === "shell").forEach(cut => {
-        customList += `<tr>
-                            <td>${(cut.enabled) ? 'YES' : 'NO'}</td>
-                            <td><input disabled type="text" maxlength=25 value="${cut.trigger}"></td>
+        customList += `<tr data-shortcut-row="shell">
+                            <td><input type="checkbox" class="shortcutsHelp-enabled" ${cut.enabled ? "checked" : ""}></td>
+                            <td><input type="text" class="shortcutsHelp-trigger" maxlength=25 value="${window._escapeHTML(cut.trigger)}"></td>
                             <td>
-                                <input disabled type="text" placeholder="Run terminal command..." value="${cut.action}">
-                                <input disabled type="checkbox" name="shortcutsHelpNew_Enter" ${(cut.linebreak) ? 'checked' : ''}>
-                                <label for="shortcutsHelpNew_Enter">Enter</label>
+                                <input type="text" class="shortcutsHelp-command" placeholder="Run terminal command..." value="${window._escapeHTML(cut.action)}">
+                                <input type="checkbox" class="shortcutsHelp-linebreak" ${cut.linebreak ? "checked" : ""}>
+                                <span>Enter</span>
                             </td>
+                            <td><button type="button" onclick="this.closest('tr').remove()">✕</button></td>
                         </tr>`;
     });
 
@@ -1149,18 +1154,22 @@ window.openShortcutsHelp = () => {
                 <br>
                 <details id="shortcutsHelpAccordeon2">
                     <summary>Custom command shortcuts</summary>
-                    <table class="shortcutsHelp">
+                    <table class="shortcutsHelp" id="shortcutsHelpCustomTable">
                         <tr>
                             <th>Enabled</th>
                             <th>Trigger</th>
                             <th>Command</th>
+                            <th></th>
                         <tr>
                        ${customList}
                     </table>
+                    <button type="button" onclick="window.addCustomShortcutRow()">+ Add custom shortcut</button>
                 </details>
+                <h6 id="shortcutsHelpStatus">Loaded values from memory</h6>
                 <br>`,
         buttons: [
             {label: "Open Shortcuts File", action:`electron.shell.openPath('${shortcutsFile}');electronWin.minimize();`},
+            {label: "Save to Disk", action: "window.saveShortcuts()"},
             {label: "Reload UI", action: "window.location.reload(true);"},
         ]
     }, () => {
@@ -1178,6 +1187,64 @@ window.openShortcutsHelp = () => {
     wrap2.addEventListener('toggle', e => {
         wrap1.open = !wrap2.open;
     });
+};
+
+// Appends a blank, editable row to the custom (shell) shortcuts table.
+window.addCustomShortcutRow = () => {
+    let table = document.getElementById("shortcutsHelpCustomTable");
+    if (!table) return;
+    table.insertAdjacentHTML("beforeend", `<tr data-shortcut-row="shell">
+        <td><input type="checkbox" class="shortcutsHelp-enabled" checked></td>
+        <td><input type="text" class="shortcutsHelp-trigger" maxlength=25 placeholder="Ctrl+Shift+Alt+Space"></td>
+        <td>
+            <input type="text" class="shortcutsHelp-command" placeholder="Run terminal command...">
+            <input type="checkbox" class="shortcutsHelp-linebreak">
+            <span>Enter</span>
+        </td>
+        <td><button type="button" onclick="this.closest('tr').remove()">✕</button></td>
+    </tr>`);
+};
+
+// Rebuilds window.shortcuts from the currently-rendered form, writes it to
+// shortcuts.json, and re-registers global shortcuts so changes take effect
+// immediately (no reload needed). Rows with an empty trigger or (for custom
+// shortcuts) an empty command are skipped - this is how a still-blank "add"
+// row, or a row the user cleared out to effectively remove it, is dropped.
+window.saveShortcuts = () => {
+    let shortcuts = [];
+
+    document.querySelectorAll('tr[data-shortcut-row="app"]').forEach(row => {
+        let trigger = row.querySelector(".shortcutsHelp-trigger").value.trim();
+        if (!trigger) return;
+        shortcuts.push({
+            type: "app",
+            trigger,
+            action: row.getAttribute("data-action"),
+            enabled: row.querySelector(".shortcutsHelp-enabled").checked
+        });
+    });
+
+    document.querySelectorAll('tr[data-shortcut-row="shell"]').forEach(row => {
+        let trigger = row.querySelector(".shortcutsHelp-trigger").value.trim();
+        let action = row.querySelector(".shortcutsHelp-command").value.trim();
+        if (!trigger || !action) return;
+        shortcuts.push({
+            type: "shell",
+            trigger,
+            action,
+            linebreak: row.querySelector(".shortcutsHelp-linebreak").checked,
+            enabled: row.querySelector(".shortcutsHelp-enabled").checked
+        });
+    });
+
+    window.shortcuts = shortcuts;
+    fs.writeFileSync(shortcutsFile, JSON.stringify(window.shortcuts, "", 4));
+
+    globalShortcut.unregisterAll();
+    window.registerKeyboardShortcuts();
+
+    let status = document.getElementById("shortcutsHelpStatus");
+    if (status) status.innerText = "New values written to shortcuts.json file at "+new Date().toTimeString();
 };
 
 window.useAppShortcut = action => {
@@ -1271,25 +1338,31 @@ window.registerKeyboardShortcuts = () => {
     window.shortcuts.forEach(cut => {
         if (!cut.enabled) return;
 
-        if (cut.type === "app") {
-            if (cut.action === "TAB_X") {
-                for (let i = 1; i <= 5; i++) {
-                    let trigger = cut.trigger.replace("X", i);
-                    let dfn = () => { window.useAppShortcut(`TAB_${i}`) };
-                    globalShortcut.register(trigger, dfn);
+        try {
+            if (cut.type === "app") {
+                if (cut.action === "TAB_X") {
+                    for (let i = 1; i <= 5; i++) {
+                        let trigger = cut.trigger.replace("X", i);
+                        let dfn = () => { window.useAppShortcut(`TAB_${i}`) };
+                        globalShortcut.register(trigger, dfn);
+                    }
+                } else {
+                    globalShortcut.register(cut.trigger, () => {
+                        window.useAppShortcut(cut.action);
+                    });
                 }
-            } else {
+            } else if (cut.type === "shell") {
                 globalShortcut.register(cut.trigger, () => {
-                    window.useAppShortcut(cut.action);
+                    let fn = (cut.linebreak) ? "writelr" : "write";
+                    window.term[window.currentTerm][fn](cut.action);
                 });
+            } else {
+                console.warn(`${cut.trigger} has unknown type`);
             }
-        } else if (cut.type === "shell") {
-            globalShortcut.register(cut.trigger, () => {
-                let fn = (cut.linebreak) ? "writelr" : "write";
-                window.term[window.currentTerm][fn](cut.action);
-            });
-        } else {
-            console.warn(`${cut.trigger} has unknown type`);
+        } catch (e) {
+            // User-editable since the shortcuts UI (docs/10-todo.md 10.2) landed -
+            // an invalid accelerator string shouldn't take the rest down with it.
+            console.warn(`Could not register shortcut "${cut.trigger}": ${e.message}`);
         }
     });
 };

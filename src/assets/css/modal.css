@@ -212,6 +212,13 @@ h6#settingsEditorStatus {
     font-style: italic;
 }
 
+h6#shortcutsHelpStatus {
+    margin: 0;
+    margin-top: 1vh;
+    font-size: 1.5vh;
+    font-style: italic;
+}
+
 /* Keyboard shortcuts modal */
 
 table.shortcutsHelp td:nth-child(2) input {
@@ -240,6 +247,20 @@ details#shortcutsHelpAccordeon2 table td:nth-child(3) input:first-child {
 
 details#shortcutsHelpAccordeon2 table td:nth-child(3) input[type="checkbox"] {
     width: auto;
+}
+
+table.shortcutsHelp td:last-child {
+    text-align: center;
+    padding: 0 .5vh;
+}
+
+table.shortcutsHelp td:last-child button {
+    margin-left: 0;
+    padding: 0.2vh 0.7vh;
+}
+
+details#shortcutsHelpAccordeon2 button {
+    margin-top: 1vh;
 }
 
 /* fsDisp media displayer */
