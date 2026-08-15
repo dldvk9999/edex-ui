@@ -33,7 +33,7 @@ A list of features worth considering for future work, gathered by researching co
 
 ## 10.3 Building on the Existing CI/Build Pipeline
 
-- `updateChecker.class.js` only polls GitHub Releases to *notify* about new versions — it doesn't actually download/apply updates in-app. Since the project already uses `electron-builder`, wiring in `electron-updater` (same ecosystem) for real auto-update would be a relatively low-friction addition.
+- `updateChecker.class.js` only polls GitHub Releases to *notify* about new versions — it doesn't actually download/apply updates in-app. Since the project already uses `electron-builder`, wiring in `electron-updater` (same ecosystem) for real auto-update would be a relatively low-friction addition. **Update:** the CI now actually publishes built binaries to GitHub Releases on a tag push (`--publish`, see `docs/06-build-and-deployment.md` 6.5) - this was a prerequisite (`electron-updater` needs published release assets to check against), not the `electron-updater` integration itself, which is still not done.
 
 ## 10.4 Suggested Starting Points
 
