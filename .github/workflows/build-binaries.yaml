@@ -83,7 +83,7 @@ jobs:
     - name: Build for arm32v7 (aka armv7l)
       uses: docker://arm32v7/node:14-buster
       with:
-        args: bash -c "npm i -g npm@7 && npm install && for i in 1 2 3; do ./node_modules/.bin/electron-builder build -l --armv7l && break; echo 'build failed (attempt '$i'), retrying...'; sleep 15; done"
+        args: bash -c "npm i -g npm@7 && npm config set fetch-retries 5 && npm config set fetch-retry-mintimeout 20000 && npm config set fetch-timeout 600000 && for i in 1 2 3; do npm install && break; echo 'npm install failed (attempt '$i'), retrying...'; sleep 15; done && for i in 1 2 3; do ./node_modules/.bin/electron-builder build -l --armv7l && break; echo 'build failed (attempt '$i'), retrying...'; sleep 15; done"
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/upload-artifact@v4
@@ -122,7 +122,7 @@ jobs:
     - name: Build for arm64 (aka arm64v8)
       uses: docker://arm64v8/node:14-buster
       with:
-        args: bash -c "npm i -g npm@7 && npm install && for i in 1 2 3; do ./node_modules/.bin/electron-builder build -l --arm64 && break; echo 'build failed (attempt '$i'), retrying...'; sleep 15; done"
+        args: bash -c "npm i -g npm@7 && npm config set fetch-retries 5 && npm config set fetch-retry-mintimeout 20000 && npm config set fetch-timeout 600000 && for i in 1 2 3; do npm install && break; echo 'npm install failed (attempt '$i'), retrying...'; sleep 15; done && for i in 1 2 3; do ./node_modules/.bin/electron-builder build -l --arm64 && break; echo 'build failed (attempt '$i'), retrying...'; sleep 15; done"
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/upload-artifact@v4
