@@ -46,6 +46,7 @@ var win, tty, extraTtys;
 const settingsFile = path.join(electron.app.getPath("userData"), "settings.json");
 const shortcutsFile = path.join(electron.app.getPath("userData"), "shortcuts.json");
 const lastWindowStateFile = path.join(electron.app.getPath("userData"), "lastWindowState.json");
+const lastSessionFile = path.join(electron.app.getPath("userData"), "lastSession.json");
 const themesDir = path.join(electron.app.getPath("userData"), "themes");
 const innerThemesDir = path.join(__dirname, "assets/themes");
 const kblayoutsDir = path.join(electron.app.getPath("userData"), "keyboards");
@@ -93,7 +94,8 @@ if (!fs.existsSync(settingsFile)) {
         hideDotfiles: false,
         fsListView: false,
         experimentalGlobeFeatures: false,
-        experimentalFeatures: false
+        experimentalFeatures: false,
+        restoreSession: false
     }, "", 4));
     signale.info(`Default settings written to ${settingsFile}`);
 }
@@ -229,6 +231,20 @@ app.on('ready', async () => {
     signale.info(`Shell found at ${settings.shell}`);
     signale.success(`Settings loaded!`);
 
+    // Session restore (docs/10-todo.md 10.2 "Session/layout save & restore") - opt-in via
+    // settings.restoreSession. Only the main tab's cwd is handled here; extra tabs (1-4)
+    // are recreated by the renderer after boot via the "ttyspawn" IPC below.
+    if (settings.restoreSession && fs.existsSync(lastSessionFile)) {
+        try {
+            let lastSession = JSON.parse(fs.readFileSync(lastSessionFile, "utf-8"));
+            if (lastSession.mainCwd && fs.existsSync(lastSession.mainCwd)) {
+                settings.cwd = lastSession.mainCwd;
+            }
+        } catch (e) {
+            signale.warn(`Could not read lastSession.json, ignoring. (${e.message})`);
+        }
+    }
+
     if (!require("fs").existsSync(settings.cwd)) throw new Error("Configured cwd path does not exist.");
 
     // See #366
@@ -305,7 +321,7 @@ app.on('ready', async () => {
         e.returnValue = true;
     });
 
-    ipc.on("ttyspawn", (e, requestId) => {
+    ipc.on("ttyspawn", (e, requestId, requestedCwd) => {
         let port = null;
         Object.keys(extraTtys).forEach(key => {
             if (extraTtys[key] === null && port === null) {
@@ -318,12 +334,19 @@ app.on('ready', async () => {
             signale.error("TTY spawn denied (Reason: exceeded max TTYs number)");
             e.sender.send("ttyspawn-reply-"+requestId, "ERROR: max number of ttys reached");
         } else {
+            // Used to restore a tab's own cwd on session restore (falls back to the
+            // main tab's current cwd - the pre-existing behavior - if unset/invalid).
+            let spawnCwd = tty.tty._cwd || settings.cwd;
+            if (requestedCwd && fs.existsSync(requestedCwd)) {
+                spawnCwd = requestedCwd;
+            }
+
             signale.pending(`Creating new TTY process on port ${port}`);
             let term = new Terminal({
                 role: "server",
                 shell: settings.shell,
                 params: settings.shellArgs || '',
-                cwd: tty.tty._cwd || settings.cwd,
+                cwd: spawnCwd,
                 env: cleanEnv,
                 port: port
             });

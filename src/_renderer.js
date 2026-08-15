@@ -53,6 +53,11 @@ const ipc = electron.ipcRenderer;
 // the reload (see #630).
 window.onbeforeunload = () => {
     try {
+        window.saveSession();
+    } catch (e) {
+        // window.term may not be initialized yet if the app crashed very early, ignore
+    }
+    try {
         ipc.sendSync("closeExtraTtys");
     } catch (e) {
         // Main process may already be tearing down, ignore
@@ -66,6 +71,7 @@ const fontsDir = path.join(settingsDir, "fonts");
 const settingsFile = path.join(settingsDir, "settings.json");
 const shortcutsFile = path.join(settingsDir, "shortcuts.json");
 const lastWindowStateFile = path.join(settingsDir, "lastWindowState.json");
+const sessionFile = path.join(settingsDir, "lastSession.json");
 
 // Load config
 window.settings = require(settingsFile);
@@ -547,6 +553,33 @@ async function initUI() {
 
     await _delay(200);
 
+    // Session restore (docs/10-todo.md 10.2 "Session/layout save & restore") - opt-in via
+    // settings.restoreSession. Main tab's cwd is already handled in _boot.js before the
+    // window was created; this recreates any extra tabs (1-4) that were open last time.
+    if (window.settings.restoreSession && fs.existsSync(sessionFile)) {
+        try {
+            let lastSession = JSON.parse(fs.readFileSync(sessionFile, "utf-8"));
+            if (Array.isArray(lastSession.tabs)) {
+                for (let saved of lastSession.tabs) {
+                    if (!(saved.index >= 1 && saved.index <= 4)) continue;
+                    await window.spawnShellTab(saved.index, saved.cwd || undefined, false).then(() => {
+                        if (saved.name) {
+                            window.tabNames[saved.index] = saved.name;
+                            window.updateShellTabLabel(saved.index, window.tabProcessNames[saved.index] || "");
+                        }
+                    }).catch(() => {
+                        // Couldn't reopen this tab (e.g. max TTYs hit somehow), skip it
+                    });
+                }
+            }
+            if (lastSession.focusedTab && window.term[lastSession.focusedTab]) {
+                window.focusShellTab(lastSession.focusedTab);
+            }
+        } catch (e) {
+            ipc.send("log", "note", `Session restore: could not read lastSession.json (${e.message})`);
+        }
+    }
+
     window.updateCheck = new UpdateChecker();
 }
 
@@ -564,6 +597,38 @@ window.remakeKeyboard = layout => {
         container: "keyboard"
     });
     ipc.send("setKbOverride", layout);
+};
+
+// Persists which tabs are open, each one's cwd, custom names, and the
+// focused tab, so it can be restored on next launch if settings.restoreSession
+// is enabled (see window.spawnShellTab below and _boot.js's "ttyspawn" handler).
+// Called on tab open/close/rename and on every unload (UI reload or app quit),
+// so a crash mid-session still leaves a reasonably fresh save on disk.
+window.saveSession = () => {
+    if (!window.term) return;
+
+    let session = {
+        mainCwd: (window.term[0] && window.term[0].cwd) || window.settings.cwd,
+        focusedTab: window.currentTerm,
+        tabs: []
+    };
+
+    for (let n = 1; n <= 4; n++) {
+        if (window.term[n]) {
+            session.tabs.push({
+                index: n,
+                cwd: window.term[n].cwd || null,
+                name: window.tabNames[n] || null
+            });
+        }
+    }
+
+    try {
+        fs.writeFileSync(sessionFile, JSON.stringify(session, "", 4));
+    } catch (e) {
+        // Non-critical (e.g. disk full) - just means session restore won't have
+        // the latest state next launch, don't interrupt whatever the user's doing
+    }
 };
 
 window.focusShellTab = number => {
@@ -588,15 +653,35 @@ window.focusShellTab = number => {
 
         window.fsDisp.followTab();
     } else if (number > 0 && number <= 4 && window.term[number] !== null && typeof window.term[number] !== "object") {
+        window.spawnShellTab(number).then(() => {
+            setTimeout(() => {
+                window.focusShellTab(number);
+            }, 500);
+        }).catch(() => {});
+    }
+};
+
+// Spawns tab `number`'s backend TTY and hooks up its client Terminal.
+// `cwd` is optional (used by session restore to reopen a tab at its saved
+// directory - see _boot.js's "ttyspawn" handler); omitted, it falls back to
+// the main tab's current cwd, same as manually clicking an empty tab always did.
+// `autoFocus` defaults to true (matches pre-existing click behavior); session
+// restore passes false so restoring several tabs doesn't fight over focus,
+// and explicitly focuses the previously-focused tab once all are back.
+window.spawnShellTab = (number, cwd, autoFocus) => {
+    if (autoFocus === undefined) autoFocus = true;
+
+    return new Promise((resolve, reject) => {
         window.term[number] = null;
 
         document.getElementById("shell_tab"+number).innerHTML = "<p>LOADING...</p>";
         const { nanoid } = require("nanoid/non-secure");
         let requestId = nanoid();
-        ipc.send("ttyspawn", requestId);
+        ipc.send("ttyspawn", requestId, cwd);
         ipc.once("ttyspawn-reply-"+requestId, (e, r) => {
             if (r.startsWith("ERROR")) {
                 document.getElementById("shell_tab"+number).innerHTML = "<p>ERROR</p>";
+                reject(new Error(r));
             } else if (r.startsWith("SUCCESS")) {
                 let port = Number(r.substr(9));
 
@@ -615,6 +700,7 @@ window.focusShellTab = number => {
                     window.term[number].term.dispose();
                     delete window.term[number];
                     window.useAppShortcut("PREVIOUS_TAB");
+                    window.saveSession();
                 };
 
                 window.term[number].onprocesschange = p => {
@@ -623,12 +709,16 @@ window.focusShellTab = number => {
                 };
 
                 document.getElementById("shell_tab"+number).innerHTML = `<p>::${port}</p>`;
-                setTimeout(() => {
-                    window.focusShellTab(number);
-                }, 500);
+                window.saveSession();
+                if (autoFocus) {
+                    setTimeout(() => {
+                        window.focusShellTab(number);
+                    }, 500);
+                }
+                resolve();
             }
         });
-    }
+    });
 };
 
 // Renders a shell tab's label: the user-set custom name takes priority
@@ -694,6 +784,7 @@ window.applyTabRename = (number, reset) => {
         delete window.tabNames[number];
     }
     window.updateShellTabLabel(number, window.tabProcessNames[number] || "");
+    window.saveSession();
 
     if (window.activeTabRenameModal) {
         window.activeTabRenameModal.close();
@@ -896,6 +987,14 @@ window.openSettings = async () => {
                         </select></td>
                     </tr>
                     <tr>
+                        <td>restoreSession</td>
+                        <td>Reopen the same tabs (and their directories) on next launch</td>
+                        <td><select id="settingsEditor-restoreSession">
+                            <option>${window.settings.restoreSession}</option>
+                            <option>${!window.settings.restoreSession}</option>
+                        </select></td>
+                    </tr>
+                    <tr>
                         <td>experimentalGlobeFeatures</td>
                         <td>Toggle experimental features for the network globe</td>
                         <td><select id="settingsEditor-experimentalGlobeFeatures">
@@ -961,6 +1060,7 @@ window.writeSettingsFile = () => {
         excludeThreadsFromToplist: (document.getElementById("settingsEditor-excludeThreadsFromToplist").value === "true"),
         hideDotfiles: (document.getElementById("settingsEditor-hideDotfiles").value === "true"),
         fsListView: (document.getElementById("settingsEditor-fsListView").value === "true"),
+        restoreSession: (document.getElementById("settingsEditor-restoreSession").value === "true"),
         experimentalGlobeFeatures: (document.getElementById("settingsEditor-experimentalGlobeFeatures").value === "true"),
         experimentalFeatures: (document.getElementById("settingsEditor-experimentalFeatures").value === "true")
     };

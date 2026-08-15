@@ -50,3 +50,4 @@
 - Boot intro animation (skippable via the `--nointro` flag)
 - Multi-monitor support (`settings.monitor` index selection)
 - Switchable between forced fullscreen and windowed mode (`allowWindowed`)
+- Session restore (opt-in, `settings.restoreSession`) — reopens the same shell tabs at their last working directory (and any custom tab names) on next launch

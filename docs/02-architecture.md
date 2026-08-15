@@ -26,7 +26,7 @@ The most central architectural feature: **the shell (TTY) and the UI are genuine
 
 Main ↔ Renderer communication uses standard Electron `ipcMain`/`ipcRenderer` channels. Conventions observed:
 
-- **One-shot request-response**: `ipc.send("ttyspawn", requestId)` → `ipc.once("ttyspawn-reply-"+requestId, ...)` — a unique id (nanoid) is appended to the channel name per request to disambiguate responses. (This pattern was introduced to prevent a race condition — the channel used to be shared, so concurrent requests could get their responses mixed up.)
+- **One-shot request-response**: `ipc.send("ttyspawn", requestId, cwd)` → `ipc.once("ttyspawn-reply-"+requestId, ...)` — a unique id (nanoid) is appended to the channel name per request to disambiguate responses. `cwd` is optional (used by session restore to reopen a tab at its saved directory — see `docs/10-todo.md` 10.0); when omitted, the new tab inherits the main tab's current cwd, same as before. (This pattern was introduced to prevent a race condition — the channel used to be shared, so concurrent requests could get their responses mixed up.)
 - **Settings override (theme/keyboard hot-swap)**: `getThemeOverride`/`setThemeOverride`, `getKbOverride`/`setKbOverride` — state is stored in closure variables in main-process memory and queried on demand.
 - **Logging**: the renderer sends `ipc.send("log", type, content)`, and main prints it via `signale` — this makes renderer-side errors visible in the main process console (the terminal it was launched from) as well.
 - **Synchronous IPC**: `ipc.sendSync("closeExtraTtys")` — the one case where backend TTY cleanup must be awaited **synchronously** right before a UI reload (if it were async, the cleanup could be cut short by the page already unloading).
