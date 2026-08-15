@@ -46,6 +46,7 @@
 
 ## 4.8 Other
 - Fuzzy finder (Ctrl+Shift+F) — quick file/command search
+- SSH profile manager (Ctrl+Shift+O) — save host/port/username/identity file per profile, one-click connect opens a new tab and runs `ssh` immediately
 - Update checker (polls GitHub Releases)
 - Boot intro animation (skippable via the `--nointro` flag)
 - Multi-monitor support (`settings.monitor` index selection)

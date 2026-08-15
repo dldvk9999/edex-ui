@@ -72,11 +72,13 @@ const settingsFile = path.join(settingsDir, "settings.json");
 const shortcutsFile = path.join(settingsDir, "shortcuts.json");
 const lastWindowStateFile = path.join(settingsDir, "lastWindowState.json");
 const sessionFile = path.join(settingsDir, "lastSession.json");
+const sshProfilesFile = path.join(settingsDir, "sshProfiles.json");
 
 // Load config
 window.settings = require(settingsFile);
 window.shortcuts = require(shortcutsFile);
 window.lastWindowState = require(lastWindowStateFile);
+window.sshProfiles = fs.existsSync(sshProfilesFile) ? require(sshProfilesFile) : [];
 
 // Support for proxies/regulated networks (see #1050).
 // Applies to our own network calls (update checker, external IP lookup)
@@ -1168,6 +1170,7 @@ window.openShortcutsHelp = () => {
         "TAB_X": "Switch to terminal tab <strong>X</strong>, or create it if it hasn't been opened yet.",
         "SETTINGS": "Open the settings editor.",
         "SHORTCUTS": "List and edit available keyboard shortcuts.",
+        "SSH_PROFILES": "Open the SSH profile manager.",
         "FUZZY_SEARCH": "Search for entries in the current working directory.",
         "FIND_IN_TERMINAL": "Search for text in the current terminal's scrollback buffer.",
         "FS_LIST_VIEW": "Toggle between list and grid view in the file browser.",
@@ -1315,6 +1318,199 @@ window.saveShortcuts = () => {
     if (status) status.innerText = "New values written to shortcuts.json file at "+new Date().toTimeString();
 };
 
+// SSH profile manager (docs/10-todo.md 10.2 "SSH profile manager"). Same
+// editable-table pattern as the shortcuts UI above: rows are read straight
+// from the DOM on save/connect, no separate in-memory form state to keep in
+// sync.
+window.openSSHProfiles = () => {
+    if (document.getElementById("settingsEditor")) return;
+
+    let rows = "";
+    window.sshProfiles.forEach(p => {
+        rows += `<tr data-ssh-row>
+                    <td><input type="text" class="sshProfile-name" placeholder="My server" value="${window._escapeHTML(p.name || "")}"></td>
+                    <td><input type="text" class="sshProfile-host" placeholder="example.com" value="${window._escapeHTML(p.host || "")}"></td>
+                    <td><input type="number" class="sshProfile-port" placeholder="22" value="${window._escapeHTML(p.port || "")}"></td>
+                    <td><input type="text" class="sshProfile-username" placeholder="root" value="${window._escapeHTML(p.username || "")}"></td>
+                    <td>
+                        <div class="sshProfile-identity-wrap">
+                            <input type="text" class="sshProfile-identity" placeholder="~/.ssh/id_rsa (optional)" value="${window._escapeHTML(p.identityFile || "")}">
+                            <button type="button" onclick="window.browseSSHIdentityFile(this)">...</button>
+                        </div>
+                    </td>
+                    <td>
+                        <button type="button" onclick="window.connectSSHProfile(this)">Connect</button>
+                        <button type="button" onclick="this.closest('tr').remove()">✕</button>
+                    </td>
+                </tr>`;
+    });
+
+    window.keyboard.detach();
+    let modal = new Modal({
+        type: "custom",
+        title: `SSH Profiles <i>(v${electron.remote.app.getVersion()})</i>`,
+        html: `<h5>Saved connections - click Connect to open a new tab and run <strong>ssh</strong> straight away.</h5>
+                <table class="sshProfiles" id="sshProfilesTable">
+                    <tr>
+                        <th>Name</th>
+                        <th>Host</th>
+                        <th>Port</th>
+                        <th>User</th>
+                        <th>Identity file</th>
+                        <th></th>
+                    </tr>
+                    ${rows}
+                </table>
+                <button type="button" onclick="window.addSSHProfileRow()">+ Add profile</button>
+                <h6 id="sshProfilesStatus">Loaded values from memory</h6>
+                <br>`,
+        buttons: [
+            {label: "Save to Disk", action: "window.saveSSHProfiles()"},
+        ]
+    }, () => {
+        window.keyboard.attach();
+        window.term[window.currentTerm].term.focus();
+        delete window.activeSSHProfilesModal;
+    });
+
+    window.activeSSHProfilesModal = modal;
+};
+
+window.addSSHProfileRow = () => {
+    let table = document.getElementById("sshProfilesTable");
+    if (!table) return;
+    table.insertAdjacentHTML("beforeend", `<tr data-ssh-row>
+        <td><input type="text" class="sshProfile-name" placeholder="My server"></td>
+        <td><input type="text" class="sshProfile-host" placeholder="example.com"></td>
+        <td><input type="number" class="sshProfile-port" placeholder="22"></td>
+        <td><input type="text" class="sshProfile-username" placeholder="root"></td>
+        <td>
+            <div class="sshProfile-identity-wrap">
+                <input type="text" class="sshProfile-identity" placeholder="~/.ssh/id_rsa (optional)">
+                <button type="button" onclick="window.browseSSHIdentityFile(this)">...</button>
+            </div>
+        </td>
+        <td>
+            <button type="button" onclick="window.connectSSHProfile(this)">Connect</button>
+            <button type="button" onclick="this.closest('tr').remove()">✕</button>
+        </td>
+    </tr>`);
+};
+
+// Opens a native file picker for the identity file field, defaulting to ~/.ssh.
+window.browseSSHIdentityFile = btn => {
+    let result = electron.remote.dialog.showOpenDialogSync({
+        defaultPath: path.join(remote.app.getPath("home"), ".ssh"),
+        properties: ["openFile", "showHiddenFiles"]
+    });
+    if (result && result[0]) {
+        btn.closest("td").querySelector(".sshProfile-identity").value = result[0];
+    }
+};
+
+window.saveSSHProfiles = () => {
+    let profiles = [];
+
+    document.querySelectorAll("tr[data-ssh-row]").forEach(row => {
+        let host = row.querySelector(".sshProfile-host").value.trim();
+        if (!host) return;
+        profiles.push({
+            name: row.querySelector(".sshProfile-name").value.trim(),
+            host,
+            port: row.querySelector(".sshProfile-port").value.trim(),
+            username: row.querySelector(".sshProfile-username").value.trim(),
+            identityFile: row.querySelector(".sshProfile-identity").value.trim()
+        });
+    });
+
+    window.sshProfiles = profiles;
+    fs.writeFileSync(sshProfilesFile, JSON.stringify(window.sshProfiles, "", 4));
+
+    let status = document.getElementById("sshProfilesStatus");
+    if (status) status.innerText = "New values written to sshProfiles.json file at "+new Date().toTimeString();
+};
+
+// Builds the ssh command line from a profile row and runs it. Saves all
+// profiles first so the row's current values are remembered even if the
+// user never explicitly hit "Save to Disk".
+window.connectSSHProfile = btn => {
+    let row = btn.closest("tr");
+    let host = row.querySelector(".sshProfile-host").value.trim();
+    if (!host) return;
+
+    let port = row.querySelector(".sshProfile-port").value.trim();
+    let username = row.querySelector(".sshProfile-username").value.trim();
+    let identity = row.querySelector(".sshProfile-identity").value.trim();
+    let name = row.querySelector(".sshProfile-name").value.trim();
+
+    let quote = s => (/\s/.test(s)) ? `"${s}"` : s;
+
+    let parts = ["ssh"];
+    if (port && port !== "22") parts.push("-p", port);
+    if (identity) parts.push("-i", quote(identity));
+    parts.push(username ? `${username}@${quote(host)}` : quote(host));
+
+    window.saveSSHProfiles();
+
+    if (window.activeSSHProfilesModal) {
+        window.activeSSHProfilesModal.close();
+    }
+
+    window.runShellCommand(parts.join(" "), name || host);
+};
+
+// Waits for a freshly-spawned client Terminal's websocket to actually be
+// open (this.write()/writelr() call this.socket.send() directly, which
+// throws if the socket isn't OPEN yet - and spawnShellTab's promise
+// resolves right after the Terminal object is constructed, well before the
+// websocket handshake completes).
+window._waitForSocketOpen = (term, timeoutMs) => {
+    return new Promise((resolve, reject) => {
+        let waited = 0;
+        let interval = setInterval(() => {
+            if (term.socket && term.socket.readyState === 1) {
+                clearInterval(interval);
+                resolve();
+            } else if ((waited += 100) >= (timeoutMs || 5000)) {
+                clearInterval(interval);
+                reject(new Error("Timed out waiting for terminal socket to open"));
+            }
+        }, 100);
+    });
+};
+
+// Runs a shell command in a free extra tab (opening one if needed, naming it
+// `label`), falling back to the currently focused tab if all 4 are already
+// in use. Used by the SSH profile manager, kept generic in case other
+// one-click-run-a-command features want it later.
+window.runShellCommand = (cmd, label) => {
+    let freeSlot = null;
+    for (let n = 1; n <= 4; n++) {
+        if (!window.term[n]) {
+            freeSlot = n;
+            break;
+        }
+    }
+
+    if (freeSlot === null) {
+        if (window.term[window.currentTerm]) window.term[window.currentTerm].writelr(cmd);
+        return;
+    }
+
+    window.spawnShellTab(freeSlot).then(() => window._waitForSocketOpen(window.term[freeSlot])).then(() => {
+        if (label) {
+            window.tabNames[freeSlot] = label.slice(0, 20);
+            window.updateShellTabLabel(freeSlot, window.tabProcessNames[freeSlot] || "");
+        }
+        window.term[freeSlot].writelr(cmd);
+        window.saveSession();
+    }).catch(() => {
+        // Tab didn't come up in time - fall back to whatever's focused rather
+        // than silently dropping the command
+        if (window.term[window.currentTerm]) window.term[window.currentTerm].writelr(cmd);
+    });
+};
+
 window.useAppShortcut = action => {
     switch(action) {
         case "COPY":
@@ -1371,6 +1567,9 @@ window.useAppShortcut = action => {
             return true;
         case "SHORTCUTS":
             window.openShortcutsHelp();
+            return true;
+        case "SSH_PROFILES":
+            window.openSSHProfiles();
             return true;
         case "FUZZY_SEARCH":
             window.activeFuzzyFinder = new FuzzyFinder();

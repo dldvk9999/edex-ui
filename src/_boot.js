@@ -47,6 +47,7 @@ const settingsFile = path.join(electron.app.getPath("userData"), "settings.json"
 const shortcutsFile = path.join(electron.app.getPath("userData"), "shortcuts.json");
 const lastWindowStateFile = path.join(electron.app.getPath("userData"), "lastWindowState.json");
 const lastSessionFile = path.join(electron.app.getPath("userData"), "lastSession.json");
+const sshProfilesFile = path.join(electron.app.getPath("userData"), "sshProfiles.json");
 const themesDir = path.join(electron.app.getPath("userData"), "themes");
 const innerThemesDir = path.join(__dirname, "assets/themes");
 const kblayoutsDir = path.join(electron.app.getPath("userData"), "keyboards");
@@ -109,6 +110,7 @@ if (!fs.existsSync(shortcutsFile)) {
         { type: "app", trigger: "Ctrl+X", action: "TAB_X", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+S", action: "SETTINGS", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+K", action: "SHORTCUTS", enabled: true },
+        { type: "app", trigger: "Ctrl+Shift+O", action: "SSH_PROFILES", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+F", action: "FUZZY_SEARCH", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+G", action: "FIND_IN_TERMINAL", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+L", action: "FS_LIST_VIEW", enabled: true },
@@ -126,6 +128,11 @@ if(!fs.existsSync(lastWindowStateFile)) {
         useFullscreen: true
     }, "", 4));
     signale.info(`Default last window state written to ${lastWindowStateFile}`);
+}
+// Create default SSH profiles file (docs/10-todo.md 10.2 "SSH profile manager")
+if (!fs.existsSync(sshProfilesFile)) {
+    fs.writeFileSync(sshProfilesFile, JSON.stringify([], "", 4));
+    signale.info(`Default SSH profiles file written to ${sshProfilesFile}`);
 }
 
 // Copy default themes & keyboard layouts & fonts
