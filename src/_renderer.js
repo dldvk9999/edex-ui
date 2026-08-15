@@ -504,10 +504,10 @@ async function initUI() {
     shellContainer.innerHTML += `
         <ul id="main_shell_tabs">
             <li id="shell_tab0" onclick="window.focusShellTab(0);" ondblclick="window.renameShellTab(0);" class="active"><p>MAIN SHELL</p></li>
-            <li id="shell_tab1" onclick="window.focusShellTab(1);" ondblclick="window.renameShellTab(1);"><p>EMPTY</p></li>
-            <li id="shell_tab2" onclick="window.focusShellTab(2);" ondblclick="window.renameShellTab(2);"><p>EMPTY</p></li>
-            <li id="shell_tab3" onclick="window.focusShellTab(3);" ondblclick="window.renameShellTab(3);"><p>EMPTY</p></li>
-            <li id="shell_tab4" onclick="window.focusShellTab(4);" ondblclick="window.renameShellTab(4);"><p>EMPTY</p></li>
+            <li id="shell_tab1" draggable="true" ondragstart="window.tabDragStart(event, 1);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 1);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(1);" ondblclick="window.renameShellTab(1);"><p>EMPTY</p></li>
+            <li id="shell_tab2" draggable="true" ondragstart="window.tabDragStart(event, 2);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 2);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(2);" ondblclick="window.renameShellTab(2);"><p>EMPTY</p></li>
+            <li id="shell_tab3" draggable="true" ondragstart="window.tabDragStart(event, 3);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 3);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(3);" ondblclick="window.renameShellTab(3);"><p>EMPTY</p></li>
+            <li id="shell_tab4" draggable="true" ondragstart="window.tabDragStart(event, 4);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 4);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(4);" ondblclick="window.renameShellTab(4);"><p>EMPTY</p></li>
         </ul>
         <div id="main_shell_innercontainer">
             <pre id="terminal0" class="active"></pre>
@@ -526,6 +526,14 @@ async function initUI() {
     window.currentTerm = 0;
     window.tabNames = {};
     window.tabProcessNames = {};
+    // Left-to-right visual order of the 4 extra tab slots (docs/10-todo.md 10.2
+    // "Tab reordering"). The main tab (slot 0) is always first and not reorderable.
+    // Slot *identity* (its port/process/name) never changes - only which DOM
+    // position it's rendered at, via window.renderTabOrder(). See also
+    // window.tabDrop below and the TAB_1..TAB_5/NEXT_TAB/PREVIOUS_TAB shortcut
+    // handlers in window.useAppShortcut, which resolve visual position -> slot
+    // through this array instead of assuming position === slot number.
+    window.tabOrder = [1, 2, 3, 4];
     window.term[0].onprocesschange = p => {
         window.tabProcessNames[0] = p;
         window.updateShellTabLabel(0, p);
@@ -559,6 +567,16 @@ async function initUI() {
     if (window.settings.restoreSession && fs.existsSync(sessionFile)) {
         try {
             let lastSession = JSON.parse(fs.readFileSync(sessionFile, "utf-8"));
+
+            // Restore tab order first (docs/10-todo.md 10.2 "Tab reordering") so tabs
+            // spawn straight into their remembered visual position. Validated as an
+            // actual permutation of [1,2,3,4] before trusting it - a hand-edited or
+            // corrupted lastSession.json shouldn't be able to leave a slot missing.
+            if (Array.isArray(lastSession.tabOrder) && [1, 2, 3, 4].every(n => lastSession.tabOrder.includes(n)) && lastSession.tabOrder.length === 4) {
+                window.tabOrder = lastSession.tabOrder;
+                window.renderTabOrder();
+            }
+
             if (Array.isArray(lastSession.tabs)) {
                 for (let saved of lastSession.tabs) {
                     if (!(saved.index >= 1 && saved.index <= 4)) continue;
@@ -610,6 +628,7 @@ window.saveSession = () => {
     let session = {
         mainCwd: (window.term[0] && window.term[0].cwd) || window.settings.cwd,
         focusedTab: window.currentTerm,
+        tabOrder: window.tabOrder,
         tabs: []
     };
 
@@ -631,21 +650,70 @@ window.saveSession = () => {
     }
 };
 
+// Tab reordering via native HTML5 drag & drop (docs/10-todo.md 10.2 "Tab
+// reordering"). Only slots 1-4 (extra tabs) are draggable/droppable - the
+// main tab (slot 0) has no drag attributes in its <li>, so it can't be
+// dragged and dropping onto it is a no-op (no ondrop handler there means
+// the browser's default "not a valid drop target" behavior applies).
+window.tabDragStart = (e, number) => {
+    e.dataTransfer.setData("text/plain", String(number));
+    e.dataTransfer.effectAllowed = "move";
+    document.getElementById("shell_tab"+number).classList.add("dragging");
+};
+
+window.tabDragOver = e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+};
+
+window.tabDragEnd = e => {
+    document.querySelectorAll("ul#main_shell_tabs > li.dragging").forEach(el => el.classList.remove("dragging"));
+};
+
+window.tabDrop = (e, targetNumber) => {
+    e.preventDefault();
+    let draggedNumber = Number(e.dataTransfer.getData("text/plain"));
+    if (!draggedNumber || draggedNumber === targetNumber) return;
+
+    let from = window.tabOrder.indexOf(draggedNumber);
+    let to = window.tabOrder.indexOf(targetNumber);
+    if (from === -1 || to === -1) return;
+
+    window.tabOrder.splice(from, 1);
+    window.tabOrder.splice(to, 0, draggedNumber);
+
+    window.renderTabOrder();
+    window.saveSession();
+};
+
+// Physically moves each extra tab's <li> in window.tabOrder's sequence to
+// match the array - appendChild() on a node already in the DOM moves it
+// rather than cloning it, so calling this in order rebuilds the whole
+// left-to-right sequence after slot 0 (MAIN, never touched here).
+window.renderTabOrder = () => {
+    let tabsList = document.getElementById("main_shell_tabs");
+    if (!tabsList) return;
+    window.tabOrder.forEach(slot => {
+        let el = document.getElementById("shell_tab"+slot);
+        if (el) tabsList.appendChild(el);
+    });
+};
+
 window.focusShellTab = number => {
     window.audioManager.folder.play();
 
     if (number !== window.currentTerm && window.term[number]) {
         window.currentTerm = number;
 
-        document.querySelectorAll(`ul#main_shell_tabs > li:not(:nth-child(${number+1}))`).forEach(e => {
-            e.setAttribute("class", "");
-        });
-        document.getElementById("shell_tab"+number).setAttribute("class", "active");
-
-        document.querySelectorAll(`div#main_shell_innercontainer > pre:not(:nth-child(${number+1}))`).forEach(e => {
-            e.setAttribute("class", "");
-        });
-        document.getElementById("terminal"+number).setAttribute("class", "active");
+        // ID-based (not DOM-position-based) so this stays correct regardless of
+        // where window.renderTabOrder() has physically moved each <li>/<pre> to
+        // (docs/10-todo.md 10.2 "Tab reordering").
+        for (let n = 0; n <= 4; n++) {
+            let tabEl = document.getElementById("shell_tab"+n);
+            if (tabEl) tabEl.setAttribute("class", (n === number) ? "active" : "");
+            let termEl = document.getElementById("terminal"+n);
+            if (termEl) termEl.setAttribute("class", (n === number) ? "active" : "");
+        }
 
         window.term[number].fit();
         window.term[number].term.focus();
@@ -1255,47 +1323,48 @@ window.useAppShortcut = action => {
         case "PASTE":
             window.term[window.currentTerm].clipboard.paste();
             return true;
-        case "NEXT_TAB":
-                if (window.term[window.currentTerm+1]) {
-                    window.focusShellTab(window.currentTerm+1);
-                } else if (window.term[window.currentTerm+2]) {
-                    window.focusShellTab(window.currentTerm+2);
-                } else if (window.term[window.currentTerm+3]) {
-                    window.focusShellTab(window.currentTerm+3);
-                } else if (window.term[window.currentTerm+4]) {
-                    window.focusShellTab(window.currentTerm+4);
-                } else {
-                    window.focusShellTab(0);
+        case "NEXT_TAB": {
+            // Traverses visual order (main first, then window.tabOrder), not raw
+            // slot number, so this stays correct after reordering (docs/10-todo.md
+            // 10.2 "Tab reordering").
+            let seq = [0, ...window.tabOrder];
+            let curIdx = seq.indexOf(window.currentTerm);
+            for (let step = 1; step <= seq.length; step++) {
+                let next = seq[(curIdx + step) % seq.length];
+                if (window.term[next]) {
+                    window.focusShellTab(next);
+                    break;
                 }
+            }
             return true;
-        case "PREVIOUS_TAB":
-                let i = window.currentTerm || 4;
-                if (window.term[i] && i !== window.currentTerm) {
-                    window.focusShellTab(i);
-                } else if (window.term[i-1]) {
-                    window.focusShellTab(i-1);
-                } else if (window.term[i-2]) {
-                    window.focusShellTab(i-2);
-                } else if (window.term[i-3]) {
-                    window.focusShellTab(i-3);
-                } else if (window.term[i-4]) {
-                    window.focusShellTab(i-4);
+        }
+        case "PREVIOUS_TAB": {
+            let seq = [0, ...window.tabOrder];
+            let curIdx = seq.indexOf(window.currentTerm);
+            for (let step = 1; step <= seq.length; step++) {
+                let prev = seq[(curIdx - step + seq.length) % seq.length];
+                if (window.term[prev]) {
+                    window.focusShellTab(prev);
+                    break;
                 }
+            }
             return true;
+        }
         case "TAB_1":
+            // Main tab is always first/pinned, not part of window.tabOrder.
             window.focusShellTab(0);
             return true;
         case "TAB_2":
-            window.focusShellTab(1);
+            window.focusShellTab(window.tabOrder[0]);
             return true;
         case "TAB_3":
-            window.focusShellTab(2);
+            window.focusShellTab(window.tabOrder[1]);
             return true;
         case "TAB_4":
-            window.focusShellTab(3);
+            window.focusShellTab(window.tabOrder[2]);
             return true;
         case "TAB_5":
-            window.focusShellTab(4);
+            window.focusShellTab(window.tabOrder[3]);
             return true;
         case "SETTINGS":
             window.openSettings();

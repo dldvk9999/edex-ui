@@ -10,6 +10,7 @@ A list of features worth considering for future work, gathered by researching co
 | ~~Tab renaming~~ | Done — double-click a shell tab to give it a custom name via a rename modal (`window.renameShellTab`/`window.tabNames` in `src/_renderer.js`). Custom names survive process/cwd changes but are **not persisted across app restarts** — see 10.2 below, this was split out as a separate follow-up rather than done as part of the same change. |
 | ~~Session/layout save & restore~~ | Done — opt-in via the new `restoreSession` setting (off by default, toggleable from the in-app Settings editor or by hand-editing `settings.json`). On every tab open/close/rename and on unload, the renderer writes `lastSession.json` (main tab cwd, each open extra tab's cwd + custom name, and the focused tab). On next launch, if enabled: `_boot.js` reads it before spawning the main tty to restore its cwd, and `_renderer.js` recreates extra tabs (1-4) at their saved cwd/name via an extended `ttyspawn` IPC call (now accepts an optional target cwd, falling back to the pre-existing "inherit main tab's cwd" behavior when omitted). Custom tab names (10.0 above) are restored as part of this. |
 | ~~Editable shortcuts UI~~ | Done — the shortcuts help screen (`Ctrl+Shift+K`, `window.openShortcutsHelp` in `src/_renderer.js`) is now a live editor instead of a read-only listing. App-type (built-in action) rows allow editing trigger + enabled; custom shell-command rows are fully editable and can be added/removed via `window.addCustomShortcutRow`. "Save to Disk" (`window.saveShortcuts`) rewrites `shortcuts.json` and re-registers shortcuts immediately (`globalShortcut.unregisterAll()` + `registerKeyboardShortcuts()`), no reload needed. `registerKeyboardShortcuts` also gained a try/catch per entry so one malformed accelerator (now user-typable, previously only ever hand-edited by technical users) can't take the rest down with it. |
+| ~~Tab reordering~~ | Done — extra tabs (slots 1-4) can be drag-and-dropped into a new order via native HTML5 drag & drop (`window.tabDragStart`/`tabDragOver`/`tabDrop`/`tabDragEnd`, `window.renderTabOrder` in `src/_renderer.js`). The main tab (slot 0) is pinned first and isn't reorderable - this sidestepped most of the port/index coupling risk called out below, since slot *identity* (port/process/name) never moves, only which DOM position it renders at. `window.tabOrder` (an array of slot numbers, persisted as part of `lastSession.json` when `restoreSession` is on) tracks visual order; `focusShellTab`'s active-tab highlighting was switched from `nth-child` CSS selectors (which assumed DOM position === slot number) to ID-based lookups so it stays correct regardless of reordering. `TAB_1`..`TAB_5`/`NEXT_TAB`/`PREVIOUS_TAB` shortcuts now resolve *visual position* to slot through `window.tabOrder` instead of assuming a fixed number-to-slot mapping. |
 
 ## 10.1 Long-Requested by the Community (never implemented upstream)
 
@@ -26,7 +27,6 @@ A list of features worth considering for future work, gathered by researching co
 
 | Feature | Description | Estimated effort |
 |---|---|---|
-| **Tab reordering (drag-and-drop)** | Split out from the original "Tab renaming / reordering" item once renaming was implemented — reordering turned out to be a bigger job than initially estimated: tabs 1-4 are bound to fixed websocket ports/array indices, and the `TAB_1`..`TAB_5` keyboard shortcuts assume a fixed number-to-tab mapping. Doing this properly means decoupling tab *display order* from the underlying port/index, not just a low-effort UI tweak. | Medium (re-estimated from the original "Low") |
 | **SSH profile manager** | Save frequently-used SSH hosts for one-click connect — a common feature in terminal emulators that's missing here. | Medium |
 | **Split panes** | Only tabs exist today; no way to view multiple terminals side-by-side in one screen. | High (needs a new layout engine) |
 | **Accessibility (a11y) improvements** | No screen-reader support, no full keyboard-only navigation. | Medium-high |
@@ -38,8 +38,7 @@ A list of features worth considering for future work, gathered by researching co
 ## 10.4 Suggested Starting Points
 
 Remaining low/medium effort items, roughly in order:
-1. **Tab reordering** — now understood to need real port/index decoupling, so treat as its own scoped task rather than bundling it with quick wins.
-2. **SSH profile manager** — Medium effort, common terminal-emulator feature that's currently missing.
+1. **SSH profile manager** — Medium effort, common terminal-emulator feature that's currently missing. The only item left on this list.
 
 The plugin/module system is the most-requested item historically, but requires a real architecture change (a stable module API, sandboxing considerations, etc.) rather than an incremental feature, so it's a bigger undertaking than the others on this list.
 

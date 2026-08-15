@@ -3,7 +3,7 @@
 ## 4.1 Terminal
 - Full emulation of a real shell process (user-configurable: bash/zsh/fish/PowerShell/etc.), built on `xterm.js`
 - Full support for colors, mouse events, and `curses`-based TUI apps (vim, htop, ranger, etc.)
-- Multiple tabs (1 default + up to 4 extra, each tab backed by its own independent pty process/websocket)
+- Multiple tabs (1 default + up to 4 extra, each tab backed by its own independent pty process/websocket) — extra tabs can be drag-and-dropped to reorder
 - CWD (current working directory) tracking → live-linked to the file browser panel (not supported on Windows for technical reasons; falls back to a "detached mode")
 - Custom color filters (theme's `colorFilter` array — chainable negate/grayscale/lighten/darken/saturate/etc.)
 - Font ligature support (`xterm-addon-ligatures`)
