@@ -56,7 +56,12 @@ jobs:
     - name: Run prebuild script
       run: npm run prebuild-linux
     - name: Build for x64 / ia32
-      run: ./node_modules/.bin/electron-builder build -l --x64 --ia32 --publish ${{ env.PUBLISH_POLICY }}
+      run: |
+        echo "::warning::DIAG PUBLISH_POLICY='${{ env.PUBLISH_POLICY }}' ref='${{ github.ref }}' event='${{ github.event_name }}'"
+        set +e
+        ./node_modules/.bin/electron-builder build -l --x64 --ia32 --publish ${{ env.PUBLISH_POLICY }} 2>&1 | tee /tmp/build.log
+        echo "::warning::DIAG electron-builder exit code was ${PIPESTATUS[0]}"
+        grep -iE "publish|upload|skip|github|401|403|token|auth" /tmp/build.log | sed 's/^/::warning::DIAG /' || echo "::warning::DIAG no matching lines found in build log"
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/upload-artifact@v4
