@@ -53,6 +53,11 @@ const ipc = electron.ipcRenderer;
 // the reload (see #630).
 window.onbeforeunload = () => {
     try {
+        window.saveSession();
+    } catch (e) {
+        // window.term may not be initialized yet if the app crashed very early, ignore
+    }
+    try {
         ipc.sendSync("closeExtraTtys");
     } catch (e) {
         // Main process may already be tearing down, ignore
@@ -66,11 +71,14 @@ const fontsDir = path.join(settingsDir, "fonts");
 const settingsFile = path.join(settingsDir, "settings.json");
 const shortcutsFile = path.join(settingsDir, "shortcuts.json");
 const lastWindowStateFile = path.join(settingsDir, "lastWindowState.json");
+const sessionFile = path.join(settingsDir, "lastSession.json");
+const sshProfilesFile = path.join(settingsDir, "sshProfiles.json");
 
 // Load config
 window.settings = require(settingsFile);
 window.shortcuts = require(shortcutsFile);
 window.lastWindowState = require(lastWindowStateFile);
+window.sshProfiles = fs.existsSync(sshProfilesFile) ? require(sshProfilesFile) : [];
 
 // Support for proxies/regulated networks (see #1050).
 // Applies to our own network calls (update checker, external IP lookup)
@@ -498,10 +506,10 @@ async function initUI() {
     shellContainer.innerHTML += `
         <ul id="main_shell_tabs">
             <li id="shell_tab0" onclick="window.focusShellTab(0);" ondblclick="window.renameShellTab(0);" class="active"><p>MAIN SHELL</p></li>
-            <li id="shell_tab1" onclick="window.focusShellTab(1);" ondblclick="window.renameShellTab(1);"><p>EMPTY</p></li>
-            <li id="shell_tab2" onclick="window.focusShellTab(2);" ondblclick="window.renameShellTab(2);"><p>EMPTY</p></li>
-            <li id="shell_tab3" onclick="window.focusShellTab(3);" ondblclick="window.renameShellTab(3);"><p>EMPTY</p></li>
-            <li id="shell_tab4" onclick="window.focusShellTab(4);" ondblclick="window.renameShellTab(4);"><p>EMPTY</p></li>
+            <li id="shell_tab1" draggable="true" ondragstart="window.tabDragStart(event, 1);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 1);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(1);" ondblclick="window.renameShellTab(1);"><p>EMPTY</p></li>
+            <li id="shell_tab2" draggable="true" ondragstart="window.tabDragStart(event, 2);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 2);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(2);" ondblclick="window.renameShellTab(2);"><p>EMPTY</p></li>
+            <li id="shell_tab3" draggable="true" ondragstart="window.tabDragStart(event, 3);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 3);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(3);" ondblclick="window.renameShellTab(3);"><p>EMPTY</p></li>
+            <li id="shell_tab4" draggable="true" ondragstart="window.tabDragStart(event, 4);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 4);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(4);" ondblclick="window.renameShellTab(4);"><p>EMPTY</p></li>
         </ul>
         <div id="main_shell_innercontainer">
             <pre id="terminal0" class="active"></pre>
@@ -520,6 +528,14 @@ async function initUI() {
     window.currentTerm = 0;
     window.tabNames = {};
     window.tabProcessNames = {};
+    // Left-to-right visual order of the 4 extra tab slots (docs/10-todo.md 10.2
+    // "Tab reordering"). The main tab (slot 0) is always first and not reorderable.
+    // Slot *identity* (its port/process/name) never changes - only which DOM
+    // position it's rendered at, via window.renderTabOrder(). See also
+    // window.tabDrop below and the TAB_1..TAB_5/NEXT_TAB/PREVIOUS_TAB shortcut
+    // handlers in window.useAppShortcut, which resolve visual position -> slot
+    // through this array instead of assuming position === slot number.
+    window.tabOrder = [1, 2, 3, 4];
     window.term[0].onprocesschange = p => {
         window.tabProcessNames[0] = p;
         window.updateShellTabLabel(0, p);
@@ -547,6 +563,43 @@ async function initUI() {
 
     await _delay(200);
 
+    // Session restore (docs/10-todo.md 10.2 "Session/layout save & restore") - opt-in via
+    // settings.restoreSession. Main tab's cwd is already handled in _boot.js before the
+    // window was created; this recreates any extra tabs (1-4) that were open last time.
+    if (window.settings.restoreSession && fs.existsSync(sessionFile)) {
+        try {
+            let lastSession = JSON.parse(fs.readFileSync(sessionFile, "utf-8"));
+
+            // Restore tab order first (docs/10-todo.md 10.2 "Tab reordering") so tabs
+            // spawn straight into their remembered visual position. Validated as an
+            // actual permutation of [1,2,3,4] before trusting it - a hand-edited or
+            // corrupted lastSession.json shouldn't be able to leave a slot missing.
+            if (Array.isArray(lastSession.tabOrder) && [1, 2, 3, 4].every(n => lastSession.tabOrder.includes(n)) && lastSession.tabOrder.length === 4) {
+                window.tabOrder = lastSession.tabOrder;
+                window.renderTabOrder();
+            }
+
+            if (Array.isArray(lastSession.tabs)) {
+                for (let saved of lastSession.tabs) {
+                    if (!(saved.index >= 1 && saved.index <= 4)) continue;
+                    await window.spawnShellTab(saved.index, saved.cwd || undefined, false).then(() => {
+                        if (saved.name) {
+                            window.tabNames[saved.index] = saved.name;
+                            window.updateShellTabLabel(saved.index, window.tabProcessNames[saved.index] || "");
+                        }
+                    }).catch(() => {
+                        // Couldn't reopen this tab (e.g. max TTYs hit somehow), skip it
+                    });
+                }
+            }
+            if (lastSession.focusedTab && window.term[lastSession.focusedTab]) {
+                window.focusShellTab(lastSession.focusedTab);
+            }
+        } catch (e) {
+            ipc.send("log", "note", `Session restore: could not read lastSession.json (${e.message})`);
+        }
+    }
+
     window.updateCheck = new UpdateChecker();
 }
 
@@ -566,21 +619,103 @@ window.remakeKeyboard = layout => {
     ipc.send("setKbOverride", layout);
 };
 
+// Persists which tabs are open, each one's cwd, custom names, and the
+// focused tab, so it can be restored on next launch if settings.restoreSession
+// is enabled (see window.spawnShellTab below and _boot.js's "ttyspawn" handler).
+// Called on tab open/close/rename and on every unload (UI reload or app quit),
+// so a crash mid-session still leaves a reasonably fresh save on disk.
+window.saveSession = () => {
+    if (!window.term) return;
+
+    let session = {
+        mainCwd: (window.term[0] && window.term[0].cwd) || window.settings.cwd,
+        focusedTab: window.currentTerm,
+        tabOrder: window.tabOrder,
+        tabs: []
+    };
+
+    for (let n = 1; n <= 4; n++) {
+        if (window.term[n]) {
+            session.tabs.push({
+                index: n,
+                cwd: window.term[n].cwd || null,
+                name: window.tabNames[n] || null
+            });
+        }
+    }
+
+    try {
+        fs.writeFileSync(sessionFile, JSON.stringify(session, "", 4));
+    } catch (e) {
+        // Non-critical (e.g. disk full) - just means session restore won't have
+        // the latest state next launch, don't interrupt whatever the user's doing
+    }
+};
+
+// Tab reordering via native HTML5 drag & drop (docs/10-todo.md 10.2 "Tab
+// reordering"). Only slots 1-4 (extra tabs) are draggable/droppable - the
+// main tab (slot 0) has no drag attributes in its <li>, so it can't be
+// dragged and dropping onto it is a no-op (no ondrop handler there means
+// the browser's default "not a valid drop target" behavior applies).
+window.tabDragStart = (e, number) => {
+    e.dataTransfer.setData("text/plain", String(number));
+    e.dataTransfer.effectAllowed = "move";
+    document.getElementById("shell_tab"+number).classList.add("dragging");
+};
+
+window.tabDragOver = e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+};
+
+window.tabDragEnd = e => {
+    document.querySelectorAll("ul#main_shell_tabs > li.dragging").forEach(el => el.classList.remove("dragging"));
+};
+
+window.tabDrop = (e, targetNumber) => {
+    e.preventDefault();
+    let draggedNumber = Number(e.dataTransfer.getData("text/plain"));
+    if (!draggedNumber || draggedNumber === targetNumber) return;
+
+    let from = window.tabOrder.indexOf(draggedNumber);
+    let to = window.tabOrder.indexOf(targetNumber);
+    if (from === -1 || to === -1) return;
+
+    window.tabOrder.splice(from, 1);
+    window.tabOrder.splice(to, 0, draggedNumber);
+
+    window.renderTabOrder();
+    window.saveSession();
+};
+
+// Physically moves each extra tab's <li> in window.tabOrder's sequence to
+// match the array - appendChild() on a node already in the DOM moves it
+// rather than cloning it, so calling this in order rebuilds the whole
+// left-to-right sequence after slot 0 (MAIN, never touched here).
+window.renderTabOrder = () => {
+    let tabsList = document.getElementById("main_shell_tabs");
+    if (!tabsList) return;
+    window.tabOrder.forEach(slot => {
+        let el = document.getElementById("shell_tab"+slot);
+        if (el) tabsList.appendChild(el);
+    });
+};
+
 window.focusShellTab = number => {
     window.audioManager.folder.play();
 
     if (number !== window.currentTerm && window.term[number]) {
         window.currentTerm = number;
 
-        document.querySelectorAll(`ul#main_shell_tabs > li:not(:nth-child(${number+1}))`).forEach(e => {
-            e.setAttribute("class", "");
-        });
-        document.getElementById("shell_tab"+number).setAttribute("class", "active");
-
-        document.querySelectorAll(`div#main_shell_innercontainer > pre:not(:nth-child(${number+1}))`).forEach(e => {
-            e.setAttribute("class", "");
-        });
-        document.getElementById("terminal"+number).setAttribute("class", "active");
+        // ID-based (not DOM-position-based) so this stays correct regardless of
+        // where window.renderTabOrder() has physically moved each <li>/<pre> to
+        // (docs/10-todo.md 10.2 "Tab reordering").
+        for (let n = 0; n <= 4; n++) {
+            let tabEl = document.getElementById("shell_tab"+n);
+            if (tabEl) tabEl.setAttribute("class", (n === number) ? "active" : "");
+            let termEl = document.getElementById("terminal"+n);
+            if (termEl) termEl.setAttribute("class", (n === number) ? "active" : "");
+        }
 
         window.term[number].fit();
         window.term[number].term.focus();
@@ -588,15 +723,35 @@ window.focusShellTab = number => {
 
         window.fsDisp.followTab();
     } else if (number > 0 && number <= 4 && window.term[number] !== null && typeof window.term[number] !== "object") {
+        window.spawnShellTab(number).then(() => {
+            setTimeout(() => {
+                window.focusShellTab(number);
+            }, 500);
+        }).catch(() => {});
+    }
+};
+
+// Spawns tab `number`'s backend TTY and hooks up its client Terminal.
+// `cwd` is optional (used by session restore to reopen a tab at its saved
+// directory - see _boot.js's "ttyspawn" handler); omitted, it falls back to
+// the main tab's current cwd, same as manually clicking an empty tab always did.
+// `autoFocus` defaults to true (matches pre-existing click behavior); session
+// restore passes false so restoring several tabs doesn't fight over focus,
+// and explicitly focuses the previously-focused tab once all are back.
+window.spawnShellTab = (number, cwd, autoFocus) => {
+    if (autoFocus === undefined) autoFocus = true;
+
+    return new Promise((resolve, reject) => {
         window.term[number] = null;
 
         document.getElementById("shell_tab"+number).innerHTML = "<p>LOADING...</p>";
         const { nanoid } = require("nanoid/non-secure");
         let requestId = nanoid();
-        ipc.send("ttyspawn", requestId);
+        ipc.send("ttyspawn", requestId, cwd);
         ipc.once("ttyspawn-reply-"+requestId, (e, r) => {
             if (r.startsWith("ERROR")) {
                 document.getElementById("shell_tab"+number).innerHTML = "<p>ERROR</p>";
+                reject(new Error(r));
             } else if (r.startsWith("SUCCESS")) {
                 let port = Number(r.substr(9));
 
@@ -615,6 +770,7 @@ window.focusShellTab = number => {
                     window.term[number].term.dispose();
                     delete window.term[number];
                     window.useAppShortcut("PREVIOUS_TAB");
+                    window.saveSession();
                 };
 
                 window.term[number].onprocesschange = p => {
@@ -623,12 +779,16 @@ window.focusShellTab = number => {
                 };
 
                 document.getElementById("shell_tab"+number).innerHTML = `<p>::${port}</p>`;
-                setTimeout(() => {
-                    window.focusShellTab(number);
-                }, 500);
+                window.saveSession();
+                if (autoFocus) {
+                    setTimeout(() => {
+                        window.focusShellTab(number);
+                    }, 500);
+                }
+                resolve();
             }
         });
-    }
+    });
 };
 
 // Renders a shell tab's label: the user-set custom name takes priority
@@ -694,6 +854,7 @@ window.applyTabRename = (number, reset) => {
         delete window.tabNames[number];
     }
     window.updateShellTabLabel(number, window.tabProcessNames[number] || "");
+    window.saveSession();
 
     if (window.activeTabRenameModal) {
         window.activeTabRenameModal.close();
@@ -896,6 +1057,14 @@ window.openSettings = async () => {
                         </select></td>
                     </tr>
                     <tr>
+                        <td>restoreSession</td>
+                        <td>Reopen the same tabs (and their directories) on next launch</td>
+                        <td><select id="settingsEditor-restoreSession">
+                            <option>${window.settings.restoreSession}</option>
+                            <option>${!window.settings.restoreSession}</option>
+                        </select></td>
+                    </tr>
+                    <tr>
                         <td>experimentalGlobeFeatures</td>
                         <td>Toggle experimental features for the network globe</td>
                         <td><select id="settingsEditor-experimentalGlobeFeatures">
@@ -961,6 +1130,7 @@ window.writeSettingsFile = () => {
         excludeThreadsFromToplist: (document.getElementById("settingsEditor-excludeThreadsFromToplist").value === "true"),
         hideDotfiles: (document.getElementById("settingsEditor-hideDotfiles").value === "true"),
         fsListView: (document.getElementById("settingsEditor-fsListView").value === "true"),
+        restoreSession: (document.getElementById("settingsEditor-restoreSession").value === "true"),
         experimentalGlobeFeatures: (document.getElementById("settingsEditor-experimentalGlobeFeatures").value === "true"),
         experimentalFeatures: (document.getElementById("settingsEditor-experimentalFeatures").value === "true")
     };
@@ -985,7 +1155,10 @@ window.toggleFullScreen = () => {
     fs.writeFileSync(lastWindowStateFile, JSON.stringify(window.lastWindowState, "", 4));
 };
 
-// Display available keyboard shortcuts and custom shortcuts helper
+// Display available keyboard shortcuts, editable in-app (docs/10-todo.md 10.2
+// "Editable shortcuts UI"). App-type entries (built-in actions) only allow
+// editing trigger/enabled, since their `action` is a fixed known value.
+// Shell-type (custom command) entries are fully editable and can be added/removed.
 window.openShortcutsHelp = () => {
     if (document.getElementById("settingsEditor")) return;
 
@@ -997,6 +1170,7 @@ window.openShortcutsHelp = () => {
         "TAB_X": "Switch to terminal tab <strong>X</strong>, or create it if it hasn't been opened yet.",
         "SETTINGS": "Open the settings editor.",
         "SHORTCUTS": "List and edit available keyboard shortcuts.",
+        "SSH_PROFILES": "Open the SSH profile manager.",
         "FUZZY_SEARCH": "Search for entries in the current working directory.",
         "FIND_IN_TERMINAL": "Search for text in the current terminal's scrollback buffer.",
         "FS_LIST_VIEW": "Toggle between list and grid view in the file browser.",
@@ -1009,24 +1183,26 @@ window.openShortcutsHelp = () => {
     let appList = "";
     window.shortcuts.filter(e => e.type === "app").forEach(cut => {
         let action = (cut.action.startsWith("TAB_")) ? "TAB_X" : cut.action;
+        let hint = (cut.action === "TAB_X") ? ` title="Keep the letter X in the trigger - it gets replaced with 1-5 to build each tab's shortcut"` : "";
 
-        appList += `<tr>
-                        <td>${(cut.enabled) ? 'YES' : 'NO'}</td>
-                        <td><input disabled type="text" maxlength=25 value="${cut.trigger}"></td>
+        appList += `<tr data-shortcut-row="app" data-action="${window._escapeHTML(cut.action)}">
+                        <td><input type="checkbox" class="shortcutsHelp-enabled" ${cut.enabled ? "checked" : ""}></td>
+                        <td><input type="text" class="shortcutsHelp-trigger" maxlength=25 value="${window._escapeHTML(cut.trigger)}"${hint}></td>
                         <td>${shortcutsDefinition[action]}</td>
                     </tr>`;
     });
 
     let customList = "";
     window.shortcuts.filter(e => e.type === "shell").forEach(cut => {
-        customList += `<tr>
-                            <td>${(cut.enabled) ? 'YES' : 'NO'}</td>
-                            <td><input disabled type="text" maxlength=25 value="${cut.trigger}"></td>
+        customList += `<tr data-shortcut-row="shell">
+                            <td><input type="checkbox" class="shortcutsHelp-enabled" ${cut.enabled ? "checked" : ""}></td>
+                            <td><input type="text" class="shortcutsHelp-trigger" maxlength=25 value="${window._escapeHTML(cut.trigger)}"></td>
                             <td>
-                                <input disabled type="text" placeholder="Run terminal command..." value="${cut.action}">
-                                <input disabled type="checkbox" name="shortcutsHelpNew_Enter" ${(cut.linebreak) ? 'checked' : ''}>
-                                <label for="shortcutsHelpNew_Enter">Enter</label>
+                                <input type="text" class="shortcutsHelp-command" placeholder="Run terminal command..." value="${window._escapeHTML(cut.action)}">
+                                <input type="checkbox" class="shortcutsHelp-linebreak" ${cut.linebreak ? "checked" : ""}>
+                                <span>Enter</span>
                             </td>
+                            <td><button type="button" onclick="this.closest('tr').remove()">✕</button></td>
                         </tr>`;
     });
 
@@ -1049,18 +1225,22 @@ window.openShortcutsHelp = () => {
                 <br>
                 <details id="shortcutsHelpAccordeon2">
                     <summary>Custom command shortcuts</summary>
-                    <table class="shortcutsHelp">
+                    <table class="shortcutsHelp" id="shortcutsHelpCustomTable">
                         <tr>
                             <th>Enabled</th>
                             <th>Trigger</th>
                             <th>Command</th>
+                            <th></th>
                         <tr>
                        ${customList}
                     </table>
+                    <button type="button" onclick="window.addCustomShortcutRow()">+ Add custom shortcut</button>
                 </details>
+                <h6 id="shortcutsHelpStatus">Loaded values from memory</h6>
                 <br>`,
         buttons: [
             {label: "Open Shortcuts File", action:`electron.shell.openPath('${shortcutsFile}');electronWin.minimize();`},
+            {label: "Save to Disk", action: "window.saveShortcuts()"},
             {label: "Reload UI", action: "window.location.reload(true);"},
         ]
     }, () => {
@@ -1080,6 +1260,257 @@ window.openShortcutsHelp = () => {
     });
 };
 
+// Appends a blank, editable row to the custom (shell) shortcuts table.
+window.addCustomShortcutRow = () => {
+    let table = document.getElementById("shortcutsHelpCustomTable");
+    if (!table) return;
+    table.insertAdjacentHTML("beforeend", `<tr data-shortcut-row="shell">
+        <td><input type="checkbox" class="shortcutsHelp-enabled" checked></td>
+        <td><input type="text" class="shortcutsHelp-trigger" maxlength=25 placeholder="Ctrl+Shift+Alt+Space"></td>
+        <td>
+            <input type="text" class="shortcutsHelp-command" placeholder="Run terminal command...">
+            <input type="checkbox" class="shortcutsHelp-linebreak">
+            <span>Enter</span>
+        </td>
+        <td><button type="button" onclick="this.closest('tr').remove()">✕</button></td>
+    </tr>`);
+};
+
+// Rebuilds window.shortcuts from the currently-rendered form, writes it to
+// shortcuts.json, and re-registers global shortcuts so changes take effect
+// immediately (no reload needed). Rows with an empty trigger or (for custom
+// shortcuts) an empty command are skipped - this is how a still-blank "add"
+// row, or a row the user cleared out to effectively remove it, is dropped.
+window.saveShortcuts = () => {
+    let shortcuts = [];
+
+    document.querySelectorAll('tr[data-shortcut-row="app"]').forEach(row => {
+        let trigger = row.querySelector(".shortcutsHelp-trigger").value.trim();
+        if (!trigger) return;
+        shortcuts.push({
+            type: "app",
+            trigger,
+            action: row.getAttribute("data-action"),
+            enabled: row.querySelector(".shortcutsHelp-enabled").checked
+        });
+    });
+
+    document.querySelectorAll('tr[data-shortcut-row="shell"]').forEach(row => {
+        let trigger = row.querySelector(".shortcutsHelp-trigger").value.trim();
+        let action = row.querySelector(".shortcutsHelp-command").value.trim();
+        if (!trigger || !action) return;
+        shortcuts.push({
+            type: "shell",
+            trigger,
+            action,
+            linebreak: row.querySelector(".shortcutsHelp-linebreak").checked,
+            enabled: row.querySelector(".shortcutsHelp-enabled").checked
+        });
+    });
+
+    window.shortcuts = shortcuts;
+    fs.writeFileSync(shortcutsFile, JSON.stringify(window.shortcuts, "", 4));
+
+    globalShortcut.unregisterAll();
+    window.registerKeyboardShortcuts();
+
+    let status = document.getElementById("shortcutsHelpStatus");
+    if (status) status.innerText = "New values written to shortcuts.json file at "+new Date().toTimeString();
+};
+
+// SSH profile manager (docs/10-todo.md 10.2 "SSH profile manager"). Same
+// editable-table pattern as the shortcuts UI above: rows are read straight
+// from the DOM on save/connect, no separate in-memory form state to keep in
+// sync.
+window.openSSHProfiles = () => {
+    if (document.getElementById("settingsEditor")) return;
+
+    let rows = "";
+    window.sshProfiles.forEach(p => {
+        rows += `<tr data-ssh-row>
+                    <td><input type="text" class="sshProfile-name" placeholder="My server" value="${window._escapeHTML(p.name || "")}"></td>
+                    <td><input type="text" class="sshProfile-host" placeholder="example.com" value="${window._escapeHTML(p.host || "")}"></td>
+                    <td><input type="number" class="sshProfile-port" placeholder="22" value="${window._escapeHTML(p.port || "")}"></td>
+                    <td><input type="text" class="sshProfile-username" placeholder="root" value="${window._escapeHTML(p.username || "")}"></td>
+                    <td>
+                        <div class="sshProfile-identity-wrap">
+                            <input type="text" class="sshProfile-identity" placeholder="~/.ssh/id_rsa (optional)" value="${window._escapeHTML(p.identityFile || "")}">
+                            <button type="button" onclick="window.browseSSHIdentityFile(this)">...</button>
+                        </div>
+                    </td>
+                    <td>
+                        <button type="button" onclick="window.connectSSHProfile(this)">Connect</button>
+                        <button type="button" onclick="this.closest('tr').remove()">✕</button>
+                    </td>
+                </tr>`;
+    });
+
+    window.keyboard.detach();
+    let modal = new Modal({
+        type: "custom",
+        title: `SSH Profiles <i>(v${electron.remote.app.getVersion()})</i>`,
+        html: `<h5>Saved connections - click Connect to open a new tab and run <strong>ssh</strong> straight away.</h5>
+                <table class="sshProfiles" id="sshProfilesTable">
+                    <tr>
+                        <th>Name</th>
+                        <th>Host</th>
+                        <th>Port</th>
+                        <th>User</th>
+                        <th>Identity file</th>
+                        <th></th>
+                    </tr>
+                    ${rows}
+                </table>
+                <button type="button" onclick="window.addSSHProfileRow()">+ Add profile</button>
+                <h6 id="sshProfilesStatus">Loaded values from memory</h6>
+                <br>`,
+        buttons: [
+            {label: "Save to Disk", action: "window.saveSSHProfiles()"},
+        ]
+    }, () => {
+        window.keyboard.attach();
+        window.term[window.currentTerm].term.focus();
+        delete window.activeSSHProfilesModal;
+    });
+
+    window.activeSSHProfilesModal = modal;
+};
+
+window.addSSHProfileRow = () => {
+    let table = document.getElementById("sshProfilesTable");
+    if (!table) return;
+    table.insertAdjacentHTML("beforeend", `<tr data-ssh-row>
+        <td><input type="text" class="sshProfile-name" placeholder="My server"></td>
+        <td><input type="text" class="sshProfile-host" placeholder="example.com"></td>
+        <td><input type="number" class="sshProfile-port" placeholder="22"></td>
+        <td><input type="text" class="sshProfile-username" placeholder="root"></td>
+        <td>
+            <div class="sshProfile-identity-wrap">
+                <input type="text" class="sshProfile-identity" placeholder="~/.ssh/id_rsa (optional)">
+                <button type="button" onclick="window.browseSSHIdentityFile(this)">...</button>
+            </div>
+        </td>
+        <td>
+            <button type="button" onclick="window.connectSSHProfile(this)">Connect</button>
+            <button type="button" onclick="this.closest('tr').remove()">✕</button>
+        </td>
+    </tr>`);
+};
+
+// Opens a native file picker for the identity file field, defaulting to ~/.ssh.
+window.browseSSHIdentityFile = btn => {
+    let result = electron.remote.dialog.showOpenDialogSync({
+        defaultPath: path.join(remote.app.getPath("home"), ".ssh"),
+        properties: ["openFile", "showHiddenFiles"]
+    });
+    if (result && result[0]) {
+        btn.closest("td").querySelector(".sshProfile-identity").value = result[0];
+    }
+};
+
+window.saveSSHProfiles = () => {
+    let profiles = [];
+
+    document.querySelectorAll("tr[data-ssh-row]").forEach(row => {
+        let host = row.querySelector(".sshProfile-host").value.trim();
+        if (!host) return;
+        profiles.push({
+            name: row.querySelector(".sshProfile-name").value.trim(),
+            host,
+            port: row.querySelector(".sshProfile-port").value.trim(),
+            username: row.querySelector(".sshProfile-username").value.trim(),
+            identityFile: row.querySelector(".sshProfile-identity").value.trim()
+        });
+    });
+
+    window.sshProfiles = profiles;
+    fs.writeFileSync(sshProfilesFile, JSON.stringify(window.sshProfiles, "", 4));
+
+    let status = document.getElementById("sshProfilesStatus");
+    if (status) status.innerText = "New values written to sshProfiles.json file at "+new Date().toTimeString();
+};
+
+// Builds the ssh command line from a profile row and runs it. Saves all
+// profiles first so the row's current values are remembered even if the
+// user never explicitly hit "Save to Disk".
+window.connectSSHProfile = btn => {
+    let row = btn.closest("tr");
+    let host = row.querySelector(".sshProfile-host").value.trim();
+    if (!host) return;
+
+    let port = row.querySelector(".sshProfile-port").value.trim();
+    let username = row.querySelector(".sshProfile-username").value.trim();
+    let identity = row.querySelector(".sshProfile-identity").value.trim();
+    let name = row.querySelector(".sshProfile-name").value.trim();
+
+    let quote = s => (/\s/.test(s)) ? `"${s}"` : s;
+
+    let parts = ["ssh"];
+    if (port && port !== "22") parts.push("-p", port);
+    if (identity) parts.push("-i", quote(identity));
+    parts.push(username ? `${username}@${quote(host)}` : quote(host));
+
+    window.saveSSHProfiles();
+
+    if (window.activeSSHProfilesModal) {
+        window.activeSSHProfilesModal.close();
+    }
+
+    window.runShellCommand(parts.join(" "), name || host);
+};
+
+// Waits for a freshly-spawned client Terminal's websocket to actually be
+// open (this.write()/writelr() call this.socket.send() directly, which
+// throws if the socket isn't OPEN yet - and spawnShellTab's promise
+// resolves right after the Terminal object is constructed, well before the
+// websocket handshake completes).
+window._waitForSocketOpen = (term, timeoutMs) => {
+    return new Promise((resolve, reject) => {
+        let waited = 0;
+        let interval = setInterval(() => {
+            if (term.socket && term.socket.readyState === 1) {
+                clearInterval(interval);
+                resolve();
+            } else if ((waited += 100) >= (timeoutMs || 5000)) {
+                clearInterval(interval);
+                reject(new Error("Timed out waiting for terminal socket to open"));
+            }
+        }, 100);
+    });
+};
+
+// Runs a shell command in a free extra tab (opening one if needed, naming it
+// `label`), falling back to the currently focused tab if all 4 are already
+// in use. Used by the SSH profile manager, kept generic in case other
+// one-click-run-a-command features want it later.
+window.runShellCommand = (cmd, label) => {
+    let freeSlot = null;
+    for (let n = 1; n <= 4; n++) {
+        if (!window.term[n]) {
+            freeSlot = n;
+            break;
+        }
+    }
+
+    if (freeSlot === null) {
+        if (window.term[window.currentTerm]) window.term[window.currentTerm].writelr(cmd);
+        return;
+    }
+
+    window.spawnShellTab(freeSlot).then(() => window._waitForSocketOpen(window.term[freeSlot])).then(() => {
+        if (label) {
+            window.tabNames[freeSlot] = label.slice(0, 20);
+            window.updateShellTabLabel(freeSlot, window.tabProcessNames[freeSlot] || "");
+        }
+        window.term[freeSlot].writelr(cmd);
+        window.saveSession();
+    }).catch(() => {
+        // Tab didn't come up in time - fall back to whatever's focused rather
+        // than silently dropping the command
+        if (window.term[window.currentTerm]) window.term[window.currentTerm].writelr(cmd);
+    });
+};
+
 window.useAppShortcut = action => {
     switch(action) {
         case "COPY":
@@ -1088,53 +1519,57 @@ window.useAppShortcut = action => {
         case "PASTE":
             window.term[window.currentTerm].clipboard.paste();
             return true;
-        case "NEXT_TAB":
-                if (window.term[window.currentTerm+1]) {
-                    window.focusShellTab(window.currentTerm+1);
-                } else if (window.term[window.currentTerm+2]) {
-                    window.focusShellTab(window.currentTerm+2);
-                } else if (window.term[window.currentTerm+3]) {
-                    window.focusShellTab(window.currentTerm+3);
-                } else if (window.term[window.currentTerm+4]) {
-                    window.focusShellTab(window.currentTerm+4);
-                } else {
-                    window.focusShellTab(0);
+        case "NEXT_TAB": {
+            // Traverses visual order (main first, then window.tabOrder), not raw
+            // slot number, so this stays correct after reordering (docs/10-todo.md
+            // 10.2 "Tab reordering").
+            let seq = [0, ...window.tabOrder];
+            let curIdx = seq.indexOf(window.currentTerm);
+            for (let step = 1; step <= seq.length; step++) {
+                let next = seq[(curIdx + step) % seq.length];
+                if (window.term[next]) {
+                    window.focusShellTab(next);
+                    break;
                 }
+            }
             return true;
-        case "PREVIOUS_TAB":
-                let i = window.currentTerm || 4;
-                if (window.term[i] && i !== window.currentTerm) {
-                    window.focusShellTab(i);
-                } else if (window.term[i-1]) {
-                    window.focusShellTab(i-1);
-                } else if (window.term[i-2]) {
-                    window.focusShellTab(i-2);
-                } else if (window.term[i-3]) {
-                    window.focusShellTab(i-3);
-                } else if (window.term[i-4]) {
-                    window.focusShellTab(i-4);
+        }
+        case "PREVIOUS_TAB": {
+            let seq = [0, ...window.tabOrder];
+            let curIdx = seq.indexOf(window.currentTerm);
+            for (let step = 1; step <= seq.length; step++) {
+                let prev = seq[(curIdx - step + seq.length) % seq.length];
+                if (window.term[prev]) {
+                    window.focusShellTab(prev);
+                    break;
                 }
+            }
             return true;
+        }
         case "TAB_1":
+            // Main tab is always first/pinned, not part of window.tabOrder.
             window.focusShellTab(0);
             return true;
         case "TAB_2":
-            window.focusShellTab(1);
+            window.focusShellTab(window.tabOrder[0]);
             return true;
         case "TAB_3":
-            window.focusShellTab(2);
+            window.focusShellTab(window.tabOrder[1]);
             return true;
         case "TAB_4":
-            window.focusShellTab(3);
+            window.focusShellTab(window.tabOrder[2]);
             return true;
         case "TAB_5":
-            window.focusShellTab(4);
+            window.focusShellTab(window.tabOrder[3]);
             return true;
         case "SETTINGS":
             window.openSettings();
             return true;
         case "SHORTCUTS":
             window.openShortcutsHelp();
+            return true;
+        case "SSH_PROFILES":
+            window.openSSHProfiles();
             return true;
         case "FUZZY_SEARCH":
             window.activeFuzzyFinder = new FuzzyFinder();
@@ -1171,25 +1606,31 @@ window.registerKeyboardShortcuts = () => {
     window.shortcuts.forEach(cut => {
         if (!cut.enabled) return;
 
-        if (cut.type === "app") {
-            if (cut.action === "TAB_X") {
-                for (let i = 1; i <= 5; i++) {
-                    let trigger = cut.trigger.replace("X", i);
-                    let dfn = () => { window.useAppShortcut(`TAB_${i}`) };
-                    globalShortcut.register(trigger, dfn);
+        try {
+            if (cut.type === "app") {
+                if (cut.action === "TAB_X") {
+                    for (let i = 1; i <= 5; i++) {
+                        let trigger = cut.trigger.replace("X", i);
+                        let dfn = () => { window.useAppShortcut(`TAB_${i}`) };
+                        globalShortcut.register(trigger, dfn);
+                    }
+                } else {
+                    globalShortcut.register(cut.trigger, () => {
+                        window.useAppShortcut(cut.action);
+                    });
                 }
-            } else {
+            } else if (cut.type === "shell") {
                 globalShortcut.register(cut.trigger, () => {
-                    window.useAppShortcut(cut.action);
+                    let fn = (cut.linebreak) ? "writelr" : "write";
+                    window.term[window.currentTerm][fn](cut.action);
                 });
+            } else {
+                console.warn(`${cut.trigger} has unknown type`);
             }
-        } else if (cut.type === "shell") {
-            globalShortcut.register(cut.trigger, () => {
-                let fn = (cut.linebreak) ? "writelr" : "write";
-                window.term[window.currentTerm][fn](cut.action);
-            });
-        } else {
-            console.warn(`${cut.trigger} has unknown type`);
+        } catch (e) {
+            // User-editable since the shortcuts UI (docs/10-todo.md 10.2) landed -
+            // an invalid accelerator string shouldn't take the rest down with it.
+            console.warn(`Could not register shortcut "${cut.trigger}": ${e.message}`);
         }
     });
 };

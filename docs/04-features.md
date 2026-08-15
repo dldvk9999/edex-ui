@@ -3,7 +3,7 @@
 ## 4.1 Terminal
 - Full emulation of a real shell process (user-configurable: bash/zsh/fish/PowerShell/etc.), built on `xterm.js`
 - Full support for colors, mouse events, and `curses`-based TUI apps (vim, htop, ranger, etc.)
-- Multiple tabs (1 default + up to 4 extra, each tab backed by its own independent pty process/websocket)
+- Multiple tabs (1 default + up to 4 extra, each tab backed by its own independent pty process/websocket) — extra tabs can be drag-and-dropped to reorder
 - CWD (current working directory) tracking → live-linked to the file browser panel (not supported on Windows for technical reasons; falls back to a "detached mode")
 - Custom color filters (theme's `colorFilter` array — chainable negate/grayscale/lighten/darken/saturate/etc.)
 - Font ligature support (`xterm-addon-ligatures`)
@@ -40,13 +40,15 @@
 - **Themes**: 21 built-in themes (JSON, defining colors/fonts/terminal/globe colors) — tron, matrix, blade, cyborg, nord, red, apollo, interstellar, chalkboard, navy, and more, many with variant suffixes (`-notype`, `-disrupted`, `-ligatures`, `-focus`, etc.)
 - **Keyboard override**: runtime hot-swap
 - **CSS injection**: arbitrary CSS can be injected via a theme JSON's `injectCSS` field
-- **Shortcut customization**: `shortcuts.json` — supports both app actions and arbitrary shell command execution
+- **Shortcut customization**: `shortcuts.json` — supports both app actions and arbitrary shell command execution, editable in-app via `Ctrl+Shift+K` (add/remove custom command shortcuts, edit triggers, toggle enabled - takes effect immediately, no reload needed) as well as by hand-editing the file
 - **Sound pack**: toggleable sound effects with volume control (13 wav files — boot, keypress, access granted/denied, alarm, panel switching, etc.)
 - **Proxy support** (`#1050`, added in a recent session): `settings.proxy` or standard `HTTP(S)_PROXY` environment variables for use on restricted networks
 
 ## 4.8 Other
 - Fuzzy finder (Ctrl+Shift+F) — quick file/command search
+- SSH profile manager (Ctrl+Shift+O) — save host/port/username/identity file per profile, one-click connect opens a new tab and runs `ssh` immediately
 - Update checker (polls GitHub Releases)
 - Boot intro animation (skippable via the `--nointro` flag)
 - Multi-monitor support (`settings.monitor` index selection)
 - Switchable between forced fullscreen and windowed mode (`allowWindowed`)
+- Session restore (opt-in, `settings.restoreSession`) — reopens the same shell tabs at their last working directory (and any custom tab names) on next launch
