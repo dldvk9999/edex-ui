@@ -504,19 +504,19 @@ async function initUI() {
     // Initialize the terminal
     let shellContainer = document.getElementById("main_shell");
     shellContainer.innerHTML += `
-        <ul id="main_shell_tabs">
-            <li id="shell_tab0" onclick="window.focusShellTab(0);" ondblclick="window.renameShellTab(0);" class="active"><p>MAIN SHELL</p></li>
-            <li id="shell_tab1" draggable="true" ondragstart="window.tabDragStart(event, 1);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 1);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(1);" ondblclick="window.renameShellTab(1);"><p>EMPTY</p></li>
-            <li id="shell_tab2" draggable="true" ondragstart="window.tabDragStart(event, 2);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 2);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(2);" ondblclick="window.renameShellTab(2);"><p>EMPTY</p></li>
-            <li id="shell_tab3" draggable="true" ondragstart="window.tabDragStart(event, 3);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 3);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(3);" ondblclick="window.renameShellTab(3);"><p>EMPTY</p></li>
-            <li id="shell_tab4" draggable="true" ondragstart="window.tabDragStart(event, 4);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 4);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(4);" ondblclick="window.renameShellTab(4);"><p>EMPTY</p></li>
+        <ul id="main_shell_tabs" role="tablist" aria-label="Shell tabs">
+            <li id="shell_tab0" role="tab" tabindex="0" aria-selected="true" aria-controls="terminal0" onkeydown="window.tabKeydown(event, 0);" onclick="window.focusShellTab(0);" ondblclick="window.renameShellTab(0);" class="active"><p>MAIN SHELL</p></li>
+            <li id="shell_tab1" role="tab" tabindex="-1" aria-selected="false" aria-controls="terminal1" draggable="true" ondragstart="window.tabDragStart(event, 1);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 1);" ondragend="window.tabDragEnd(event);" onkeydown="window.tabKeydown(event, 1);" onclick="window.focusShellTab(1);" ondblclick="window.renameShellTab(1);"><p>EMPTY</p></li>
+            <li id="shell_tab2" role="tab" tabindex="-1" aria-selected="false" aria-controls="terminal2" draggable="true" ondragstart="window.tabDragStart(event, 2);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 2);" ondragend="window.tabDragEnd(event);" onkeydown="window.tabKeydown(event, 2);" onclick="window.focusShellTab(2);" ondblclick="window.renameShellTab(2);"><p>EMPTY</p></li>
+            <li id="shell_tab3" role="tab" tabindex="-1" aria-selected="false" aria-controls="terminal3" draggable="true" ondragstart="window.tabDragStart(event, 3);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 3);" ondragend="window.tabDragEnd(event);" onkeydown="window.tabKeydown(event, 3);" onclick="window.focusShellTab(3);" ondblclick="window.renameShellTab(3);"><p>EMPTY</p></li>
+            <li id="shell_tab4" role="tab" tabindex="-1" aria-selected="false" aria-controls="terminal4" draggable="true" ondragstart="window.tabDragStart(event, 4);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 4);" onkeydown="window.tabKeydown(event, 4);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(4);" ondblclick="window.renameShellTab(4);"><p>EMPTY</p></li>
         </ul>
         <div id="main_shell_innercontainer">
-            <pre id="terminal0" class="active"></pre>
-            <pre id="terminal1"></pre>
-            <pre id="terminal2"></pre>
-            <pre id="terminal3"></pre>
-            <pre id="terminal4"></pre>
+            <pre id="terminal0" class="active" role="tabpanel" aria-label="Main shell"></pre>
+            <pre id="terminal1" role="tabpanel" aria-label="Shell tab 1"></pre>
+            <pre id="terminal2" role="tabpanel" aria-label="Shell tab 2"></pre>
+            <pre id="terminal3" role="tabpanel" aria-label="Shell tab 3"></pre>
+            <pre id="terminal4" role="tabpanel" aria-label="Shell tab 4"></pre>
         </div>`;
     window.term = {
         0: new Terminal({
@@ -701,6 +701,69 @@ window.renderTabOrder = () => {
     });
 };
 
+// Keyboard behavior for the shell tablist (docs/10-todo.md 10.2
+// "Accessibility"), following the WAI-ARIA tabs pattern with *manual*
+// activation: arrow keys only move focus (roving tabindex, see
+// window._moveTabFocus), Enter/Space actually switches tabs. Manual
+// activation is used here specifically because activating an empty slot
+// spawns a whole new TTY process - too expensive a side effect to trigger
+// just by arrowing past it.
+window.tabKeydown = (e, number) => {
+    let seq = [0, ...window.tabOrder];
+
+    switch (e.key) {
+        case "Enter":
+        case " ":
+            e.preventDefault();
+            window.focusShellTab(number);
+            return;
+        case "ArrowRight":
+        case "ArrowLeft": {
+            e.preventDefault();
+            let dir = (e.key === "ArrowRight") ? 1 : -1;
+
+            // Alt+Arrow on an extra tab reorders it - the keyboard equivalent
+            // of dragging it (window.tabDrop), for anyone who can't use a
+            // mouse/touch to reorder tabs.
+            if (e.altKey && number >= 1 && number <= 4) {
+                let from = window.tabOrder.indexOf(number);
+                let to = from + dir;
+                if (to < 0 || to >= window.tabOrder.length) return;
+                [window.tabOrder[from], window.tabOrder[to]] = [window.tabOrder[to], window.tabOrder[from]];
+                window.renderTabOrder();
+                window.saveSession();
+                document.getElementById("shell_tab"+number).focus();
+                return;
+            }
+
+            let idx = seq.indexOf(number);
+            window._moveTabFocus(seq[(idx + dir + seq.length) % seq.length]);
+            return;
+        }
+        case "Home":
+            e.preventDefault();
+            window._moveTabFocus(seq[0]);
+            return;
+        case "End":
+            e.preventDefault();
+            window._moveTabFocus(seq[seq.length - 1]);
+            return;
+    }
+};
+
+// Moves the single tab-stop (roving tabindex) to `number` and focuses it,
+// without activating it - i.e. without switching tabs or spawning
+// anything. Kept separate from focusShellTab's aria-selected/tabindex sync,
+// which only runs on actual activation.
+window._moveTabFocus = number => {
+    for (let n = 0; n <= 4; n++) {
+        let el = document.getElementById("shell_tab"+n);
+        if (el) el.setAttribute("tabindex", (n === number) ? "0" : "-1");
+    }
+    let target = document.getElementById("shell_tab"+number);
+    if (target) target.focus();
+};
+
 window.focusShellTab = number => {
     window.audioManager.folder.play();
 
@@ -712,7 +775,11 @@ window.focusShellTab = number => {
         // (docs/10-todo.md 10.2 "Tab reordering").
         for (let n = 0; n <= 4; n++) {
             let tabEl = document.getElementById("shell_tab"+n);
-            if (tabEl) tabEl.setAttribute("class", (n === number) ? "active" : "");
+            if (tabEl) {
+                tabEl.setAttribute("class", (n === number) ? "active" : "");
+                tabEl.setAttribute("aria-selected", (n === number) ? "true" : "false");
+                tabEl.setAttribute("tabindex", (n === number) ? "0" : "-1");
+            }
             let termEl = document.getElementById("terminal"+n);
             if (termEl) termEl.setAttribute("class", (n === number) ? "active" : "");
         }
@@ -1081,7 +1148,7 @@ window.openSettings = async () => {
                         </select></td>
                     </tr>
                 </table>
-                <h6 id="settingsEditorStatus">Loaded values from memory</h6>
+                <h6 id="settingsEditorStatus" aria-live="polite">Loaded values from memory</h6>
                 <br>`,
         buttons: [
             {label: "Open in External Editor", action:`electron.shell.openPath('${settingsFile}');electronWin.minimize();`},
@@ -1202,7 +1269,7 @@ window.openShortcutsHelp = () => {
                                 <input type="checkbox" class="shortcutsHelp-linebreak" ${cut.linebreak ? "checked" : ""}>
                                 <span>Enter</span>
                             </td>
-                            <td><button type="button" onclick="this.closest('tr').remove()">✕</button></td>
+                            <td><button type="button" aria-label="Remove this shortcut" onclick="this.closest('tr').remove()">✕</button></td>
                         </tr>`;
     });
 
@@ -1236,7 +1303,7 @@ window.openShortcutsHelp = () => {
                     </table>
                     <button type="button" onclick="window.addCustomShortcutRow()">+ Add custom shortcut</button>
                 </details>
-                <h6 id="shortcutsHelpStatus">Loaded values from memory</h6>
+                <h6 id="shortcutsHelpStatus" aria-live="polite">Loaded values from memory</h6>
                 <br>`,
         buttons: [
             {label: "Open Shortcuts File", action:`electron.shell.openPath('${shortcutsFile}');electronWin.minimize();`},
@@ -1272,7 +1339,7 @@ window.addCustomShortcutRow = () => {
             <input type="checkbox" class="shortcutsHelp-linebreak">
             <span>Enter</span>
         </td>
-        <td><button type="button" onclick="this.closest('tr').remove()">✕</button></td>
+        <td><button type="button" aria-label="Remove this shortcut" onclick="this.closest('tr').remove()">✕</button></td>
     </tr>`);
 };
 
@@ -1335,12 +1402,12 @@ window.openSSHProfiles = () => {
                     <td>
                         <div class="sshProfile-identity-wrap">
                             <input type="text" class="sshProfile-identity" placeholder="~/.ssh/id_rsa (optional)" value="${window._escapeHTML(p.identityFile || "")}">
-                            <button type="button" onclick="window.browseSSHIdentityFile(this)">...</button>
+                            <button type="button" aria-label="Browse for identity file" onclick="window.browseSSHIdentityFile(this)">...</button>
                         </div>
                     </td>
                     <td>
                         <button type="button" onclick="window.connectSSHProfile(this)">Connect</button>
-                        <button type="button" onclick="this.closest('tr').remove()">✕</button>
+                        <button type="button" aria-label="Remove this profile" onclick="this.closest('tr').remove()">✕</button>
                     </td>
                 </tr>`;
     });
@@ -1362,7 +1429,7 @@ window.openSSHProfiles = () => {
                     ${rows}
                 </table>
                 <button type="button" onclick="window.addSSHProfileRow()">+ Add profile</button>
-                <h6 id="sshProfilesStatus">Loaded values from memory</h6>
+                <h6 id="sshProfilesStatus" aria-live="polite">Loaded values from memory</h6>
                 <br>`,
         buttons: [
             {label: "Save to Disk", action: "window.saveSSHProfiles()"},
@@ -1387,12 +1454,12 @@ window.addSSHProfileRow = () => {
         <td>
             <div class="sshProfile-identity-wrap">
                 <input type="text" class="sshProfile-identity" placeholder="~/.ssh/id_rsa (optional)">
-                <button type="button" onclick="window.browseSSHIdentityFile(this)">...</button>
+                <button type="button" aria-label="Browse for identity file" onclick="window.browseSSHIdentityFile(this)">...</button>
             </div>
         </td>
         <td>
             <button type="button" onclick="window.connectSSHProfile(this)">Connect</button>
-            <button type="button" onclick="this.closest('tr').remove()">✕</button>
+            <button type="button" aria-label="Remove this profile" onclick="this.closest('tr').remove()">✕</button>
         </td>
     </tr>`);
 };

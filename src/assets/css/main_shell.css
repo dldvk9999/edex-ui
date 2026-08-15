@@ -98,6 +98,11 @@ ul#main_shell_tabs > li.dragging {
     opacity: 0.4;
 }
 
+ul#main_shell_tabs > li:focus-visible {
+    outline: 0.2vh solid rgb(var(--color_r), var(--color_g), var(--color_b));
+    outline-offset: -0.3vh;
+}
+
 div#main_shell_innercontainer, div#main_shell_innercontainer pre {
     height: 100%;
     width: 100%;
