@@ -266,8 +266,15 @@ jobs:
         node "$NPM_GYP_DIR/bin/node-gyp.js" --version
     - name: npm install
       run: npm install
+    - name: Disable Spotlight indexing (mitigates flaky "hdiutil ... Resource busy" dmg failures)
+      run: sudo mdutil -a -i off
     - name: npm build
-      run: npm run build-darwin -- --publish ${{ env.PUBLISH_POLICY }}
+      run: |
+        for i in 1 2 3; do
+          npm run build-darwin -- --publish ${{ env.PUBLISH_POLICY }} && break
+          echo "build failed (attempt $i), retrying..."
+          sleep 15
+        done
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/upload-artifact@v4
