@@ -32,3 +32,10 @@ Five parallel jobs: `build-linux`, `build-linux-arm32`, `build-linux-arm64`, `bu
 - Windows: pinned to the `windows-2022` runner image, and node-gyp was replaced wholesale with a modern version (9.x) to fix VS2022 detection
 - macOS: worked around Python 3.12+/3.14 dropping `distutils` (via installing `setuptools`), worked around a missing `openssl_fips` gyp variable, and bumped `electron-builder` 22→23 to fix a hardcoded `/usr/bin/python` call that no longer exists on modern macOS runner images
 - Common: replaced deprecated GitHub Actions (`actions/cache@v2`, `actions/upload-artifact@v2`, etc.) with their current major versions across the board
+- arm32/arm64: QEMU-emulated `npm install` was only ever attempted once with no retry (the build step after it already had one) - wrapped it in the same 3x retry pattern and bumped npm's `fetch-retries`/`fetch-timeout` config, since ERR_SOCKET_TIMEOUT under emulation was a recurring failure
+
+## 6.5 Publishing Releases
+
+Every job's `electron-builder`/`npm run build-*` invocation now carries a `--publish ${{ env.PUBLISH_POLICY }}` flag. `PUBLISH_POLICY` (a workflow-level `env`, computed once from `github.event_name`/`github.ref`) resolves to `"always"` only when the workflow was triggered by a push of a tag matching `v*` (i.e. an actual release tag like `v2.3.0`), and `"never"` for every other trigger (ordinary branch pushes, PRs, `create` events) - so day-to-day CI runs never attempt to touch GitHub Releases. `package.json`'s `build.publish: "github"` tells `electron-builder` to publish to the GitHub repo it infers from `package.json`'s `repository` field, using the `GH_TOKEN` (`secrets.GITHUB_TOKEN`) already passed to every build step. The workflow declares `permissions: contents: write` so that token actually has upload rights.
+
+To cut a release: create a GitHub Release with a `vX.Y.Z` tag (this pushes the matching git tag, which is what actually fires the publish-enabled build) - all five jobs build their platform's binary and electron-builder attaches it to that release directly, no manual artifact download/upload needed.
