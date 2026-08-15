@@ -69,14 +69,14 @@ class Keyboard {
                     key.setAttribute("id", "keyboard_spacebar");
                 } else if (keyObj.cmd === "\r") {
                     key.setAttribute("class", "keyboard_key keyboard_enter");
-                    key.innerHTML = `<h1>${keyObj.name}</h1>`;
+                    key.innerHTML = `<h1>${window._escapeHtml(String(keyObj.name || ""))}</h1>`;
                 } else {
                     key.innerHTML = `
-                        <h5>${keyObj.altshift_name || ""}</h5>
-                        <h4>${keyObj.fn_name || ""}</h4>
-                        <h3>${keyObj.alt_name || ""}</h3>
-                        <h2>${keyObj.shift_name || ""}</h2>
-                        <h1>${keyObj.name || ""}</h1>`;
+                        <h5>${window._escapeHtml(String(keyObj.altshift_name || ""))}</h5>
+                        <h4>${window._escapeHtml(String(keyObj.fn_name || ""))}</h4>
+                        <h3>${window._escapeHtml(String(keyObj.alt_name || ""))}</h3>
+                        <h2>${window._escapeHtml(String(keyObj.shift_name || ""))}</h2>
+                        <h1>${window._escapeHtml(String(keyObj.name || ""))}</h1>`;
                 }
 
                 // Icon support, overrides previously defined innerHTML

@@ -13,6 +13,14 @@ window._escapeHtml = text => {
     };
     return text.replace(/[&<>"']/g, m => {return map[m];});
 };
+// For values interpolated into a single-quoted JS string literal that itself
+// lives inside an HTML attribute (e.g. onclick='someFn(\'${value}\')').
+// HTML-escaping alone does NOT protect this context: browsers HTML-decode
+// attribute values (e.g. &quot; -> ") before treating them as JS source, so
+// an HTML-escaped quote can still break out of the string at execution time.
+window._escapeJsString = text => {
+    return String(text).replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+};
 window._encodePathURI = uri => {
     return encodeURI(uri).replace(/#/g, "%23");
 };
@@ -489,11 +497,11 @@ async function initUI() {
     let shellContainer = document.getElementById("main_shell");
     shellContainer.innerHTML += `
         <ul id="main_shell_tabs">
-            <li id="shell_tab0" onclick="window.focusShellTab(0);" class="active"><p>MAIN SHELL</p></li>
-            <li id="shell_tab1" onclick="window.focusShellTab(1);"><p>EMPTY</p></li>
-            <li id="shell_tab2" onclick="window.focusShellTab(2);"><p>EMPTY</p></li>
-            <li id="shell_tab3" onclick="window.focusShellTab(3);"><p>EMPTY</p></li>
-            <li id="shell_tab4" onclick="window.focusShellTab(4);"><p>EMPTY</p></li>
+            <li id="shell_tab0" onclick="window.focusShellTab(0);" ondblclick="window.renameShellTab(0);" class="active"><p>MAIN SHELL</p></li>
+            <li id="shell_tab1" onclick="window.focusShellTab(1);" ondblclick="window.renameShellTab(1);"><p>EMPTY</p></li>
+            <li id="shell_tab2" onclick="window.focusShellTab(2);" ondblclick="window.renameShellTab(2);"><p>EMPTY</p></li>
+            <li id="shell_tab3" onclick="window.focusShellTab(3);" ondblclick="window.renameShellTab(3);"><p>EMPTY</p></li>
+            <li id="shell_tab4" onclick="window.focusShellTab(4);" ondblclick="window.renameShellTab(4);"><p>EMPTY</p></li>
         </ul>
         <div id="main_shell_innercontainer">
             <pre id="terminal0" class="active"></pre>
@@ -510,8 +518,11 @@ async function initUI() {
         })
     };
     window.currentTerm = 0;
+    window.tabNames = {};
+    window.tabProcessNames = {};
     window.term[0].onprocesschange = p => {
-        document.getElementById("shell_tab0").innerHTML = `<p>MAIN - ${p}</p>`;
+        window.tabProcessNames[0] = p;
+        window.updateShellTabLabel(0, p);
     };
     // Prevent losing hardware keyboard focus on the terminal when using touch keyboard
     window.onmouseup = e => {
@@ -597,6 +608,8 @@ window.focusShellTab = number => {
 
                 window.term[number].onclose = e => {
                     delete window.term[number].onprocesschange;
+                    delete window.tabNames[number];
+                    delete window.tabProcessNames[number];
                     document.getElementById("shell_tab"+number).innerHTML = "<p>EMPTY</p>";
                     document.getElementById("terminal"+number).innerHTML = "";
                     window.term[number].term.dispose();
@@ -605,7 +618,8 @@ window.focusShellTab = number => {
                 };
 
                 window.term[number].onprocesschange = p => {
-                    document.getElementById("shell_tab"+number).innerHTML = `<p>#${number+1} - ${p}</p>`;
+                    window.tabProcessNames[number] = p;
+                    window.updateShellTabLabel(number, p);
                 };
 
                 document.getElementById("shell_tab"+number).innerHTML = `<p>::${port}</p>`;
@@ -614,6 +628,76 @@ window.focusShellTab = number => {
                 }, 500);
             }
         });
+    }
+};
+
+// Renders a shell tab's label: the user-set custom name takes priority
+// over the default "MAIN - <process>" / "#N - <process>" label.
+window._escapeHTML = str => String(str).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
+}[c]));
+
+window.updateShellTabLabel = (number, processName) => {
+    let el = document.getElementById("shell_tab"+number);
+    if (!el) return;
+
+    if (window.tabNames[number]) {
+        el.innerHTML = `<p>${window._escapeHTML(window.tabNames[number])}</p>`;
+        return;
+    }
+
+    if (number === 0) {
+        el.innerHTML = `<p>MAIN - ${processName}</p>`;
+    } else {
+        el.innerHTML = `<p>#${number+1} - ${processName}</p>`;
+    }
+};
+
+// Prompts for a custom tab name (#10-todo.md - "Tab renaming / reordering").
+window.renameShellTab = number => {
+    if (!window.term[number] || document.getElementById("settingsEditor")) return;
+
+    window.keyboard.detach();
+    let modal = new Modal({
+        type: "custom",
+        title: "Rename Tab",
+        html: `<input type="text" id="tabRenameInput" maxlength="20" placeholder="Tab name..." value="${window._escapeHTML(window.tabNames[number] || "")}" />`,
+        buttons: [
+            {label: "Reset", action: `window.applyTabRename(${number}, true)`},
+            {label: "Rename", action: `window.applyTabRename(${number})`}
+        ]
+    }, () => {
+        window.keyboard.attach();
+        window.term[window.currentTerm].term.focus();
+    });
+
+    window.activeTabRenameModal = modal;
+
+    let input = document.getElementById("tabRenameInput");
+    input.focus();
+    input.select();
+    input.addEventListener("keydown", e => {
+        if (e.key === "Enter") {
+            window.applyTabRename(number);
+            e.preventDefault();
+        }
+    });
+};
+
+window.applyTabRename = (number, reset) => {
+    let input = document.getElementById("tabRenameInput");
+    let value = (!reset && input) ? input.value.trim().slice(0, 20) : "";
+
+    if (value) {
+        window.tabNames[number] = value;
+    } else {
+        delete window.tabNames[number];
+    }
+    window.updateShellTabLabel(number, window.tabProcessNames[number] || "");
+
+    if (window.activeTabRenameModal) {
+        window.activeTabRenameModal.close();
+        delete window.activeTabRenameModal;
     }
 };
 
@@ -914,6 +998,7 @@ window.openShortcutsHelp = () => {
         "SETTINGS": "Open the settings editor.",
         "SHORTCUTS": "List and edit available keyboard shortcuts.",
         "FUZZY_SEARCH": "Search for entries in the current working directory.",
+        "FIND_IN_TERMINAL": "Search for text in the current terminal's scrollback buffer.",
         "FS_LIST_VIEW": "Toggle between list and grid view in the file browser.",
         "FS_DOTFILES": "Toggle hidden files and directories in the file browser.",
         "KB_PASSMODE": "Toggle the on-screen keyboard's \"Password Mode\", which allows you to safely<br>type sensitive information even if your screen might be recorded (disable visual input feedback).",
@@ -1053,6 +1138,9 @@ window.useAppShortcut = action => {
             return true;
         case "FUZZY_SEARCH":
             window.activeFuzzyFinder = new FuzzyFinder();
+            return true;
+        case "FIND_IN_TERMINAL":
+            window.activeTerminalSearch = new TerminalSearch();
             return true;
         case "FS_LIST_VIEW":
             window.fsDisp.toggleListview();

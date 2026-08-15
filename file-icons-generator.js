@@ -14,6 +14,12 @@ const fs = require("fs");
 const path = require("path");
 const CSON = require("cson-parser");
 
+// Escapes ALL regex-special characters, not just periods, before building a
+// RegExp from file-icons submodule config strings (CodeQL js/incomplete-sanitization).
+function escapeRegExpChars(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 var fileIconsObject = {};
 // Get file icons from fontawesome
 fs.readdirSync(path.join(__dirname, "file-icons", "font-awesome", "svgs", "brands")).forEach(icon => {
@@ -190,15 +196,15 @@ Object.keys(atomConfig.directoryIcons).forEach(key => {
     if (Array.isArray(config.match)) {
         config.match.forEach(key => {
             let match = key[0];
-            if (typeof match === "string") match = new RegExp(match.replace(/\./g, "\\.")+"$", "i"); // lgtm [js/incomplete-sanitization]
+            if (typeof match === "string") match = new RegExp(escapeRegExpChars(match)+"$", "i");
             fileIconsMatchScript += `    if (${match}.test(filename)) { return "${config.icon}"; }\n`;
         });
     } else {
-        if (typeof config.match === "string") config.match = new RegExp(config.match.replace(/\./g, "\\.")+"$", "i"); // lgtm [js/incomplete-sanitization]
+        if (typeof config.match === "string") config.match = new RegExp(escapeRegExpChars(config.match)+"$", "i");
         fileIconsMatchScript += `    if (${config.match}.test(filename)) { return "${config.icon}"; }\n`;
 
         if (config.alias) {
-            if (typeof config.alias === "string") config.alias = new RegExp(config.alias.replace(/\./g, "\\.")+"$", "i"); // lgtm [js/incomplete-sanitization]
+            if (typeof config.alias === "string") config.alias = new RegExp(escapeRegExpChars(config.alias)+"$", "i");
             fileIconsMatchScript += `    if (${config.alias}.test(filename)) { return "${config.icon}"; }\n`;
         }
     }
@@ -209,15 +215,15 @@ Object.keys(atomConfig.fileIcons).forEach(key => {
     if (Array.isArray(config.match)) {
         config.match.forEach(key => {
             let match = key[0];
-            if (typeof match === "string") match = new RegExp(match.replace(/\./g, "\\.")+"$", "i"); // lgtm [js/incomplete-sanitization]
+            if (typeof match === "string") match = new RegExp(escapeRegExpChars(match)+"$", "i");
             fileIconsMatchScript += `    if (${match}.test(filename)) { return "${config.icon}"; }\n`;
         });
     } else {
-        if (typeof config.match === "string") config.match = new RegExp(config.match.replace(/\./g, "\\.")+"$", "i"); // lgtm [js/incomplete-sanitization]
+        if (typeof config.match === "string") config.match = new RegExp(escapeRegExpChars(config.match)+"$", "i");
         fileIconsMatchScript += `    if (${config.match}.test(filename)) { return "${config.icon}"; }\n`;
 
         if (config.alias) {
-            if (typeof config.alias === "string") config.alias = new RegExp(config.alias.replace(/\./g, "\\.")+"$", "i"); // lgtm [js/incomplete-sanitization]
+            if (typeof config.alias === "string") config.alias = new RegExp(escapeRegExpChars(config.alias)+"$", "i");
             fileIconsMatchScript += `    if (${config.alias}.test(filename)) { return "${config.icon}"; }\n`;
         }
     }
