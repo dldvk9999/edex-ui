@@ -43,7 +43,12 @@
   "build": {
     "appId": "com.edex.ui",
     "productName": "eDEX-UI",
-    "publish": "github",
+    "publish": {
+        "provider": "github",
+        "owner": "dldvk9999",
+        "repo": "edex-ui",
+        "releaseType": "release"
+    },
     "asar": true,
     "compression": "normal",
     "copyright": "Copyright © 2017-2021 Gabriel 'Squared' SAILLARD <gabriel@saillard.dev> (https://gaby.dev)",
