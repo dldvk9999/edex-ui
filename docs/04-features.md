@@ -37,7 +37,7 @@
 - PDF reader (`pdfjs-dist` — Mozilla PDF.js)
 
 ## 4.7 Customization
-- **Themes**: 21 built-in themes (JSON, defining colors/fonts/terminal/globe colors) — tron, matrix, blade, cyborg, nord, red, apollo, interstellar, chalkboard, navy, and more, many with variant suffixes (`-notype`, `-disrupted`, `-ligatures`, `-focus`, etc.)
+- **Themes**: 22 built-in themes (JSON, defining colors/fonts/terminal/globe colors) — tron, matrix, blade, cyborg, nord, dracula, red, apollo, interstellar, chalkboard, navy, and more, many with variant suffixes (`-notype`, `-disrupted`, `-ligatures`, `-focus`, etc.)
 - **Keyboard override**: runtime hot-swap
 - **CSS injection**: arbitrary CSS can be injected via a theme JSON's `injectCSS` field
 - **Shortcut customization**: `shortcuts.json` — supports both app actions and arbitrary shell command execution, editable in-app via `Ctrl+Shift+K` (add/remove custom command shortcuts, edit triggers, toggle enabled - takes effect immediately, no reload needed) as well as by hand-editing the file
