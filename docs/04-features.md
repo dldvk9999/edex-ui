@@ -17,6 +17,7 @@
 
 ## 4.3 Network Monitoring
 - Active connection list, transfer rates
+- Auto-detects the first external, IPv4-connected interface with a MAC address; can be overridden to a specific interface via the `iface` setting (Settings editor → `iface` dropdown, populated live from `si.networkInterfaces()`)
 - GeoIP lookups (`geolite2-redist` + `maxmind` — automatically downloads the MaxMind GeoLite2-City DB on first run)
 - External IP lookup (via the `myexternalip.com` API)
 - Real-time connection location visualization as markers on a 3D globe widget (`encom-globe.js`, a ~980K bundled third-party vendor script)
