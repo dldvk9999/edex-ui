@@ -53,3 +53,5 @@
 - Multi-monitor support (`settings.monitor` index selection)
 - Switchable between forced fullscreen and windowed mode (`allowWindowed`)
 - Session restore (opt-in, `settings.restoreSession`) — reopens the same shell tabs at their last working directory (and any custom tab names) on next launch
+- System volume widget next to the clock — get/set/mute the OS output volume (macOS via `osascript`, Linux via `pactl`/`amixer`, Windows via a PowerShell + Core Audio COM interop helper); degrades to a disabled "N/A" state if no supported backend is found
+- Lock screen (Ctrl+Shift+Z) — password-protected privacy overlay; blanks the screen and blocks all other shortcuts until the correct password is entered, with a warning alarm after 3 failed attempts. The password is stored as a PBKDF2 hash + salt (never plaintext), set via the Settings editor. **Not a real security boundary** — see `docs/07-security.md`
