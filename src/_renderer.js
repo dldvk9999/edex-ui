@@ -464,8 +464,13 @@ async function initUI() {
     // Initialize modules
     window.mods = {};
 
+    // Screensaver-style privacy lock (docs/10-todo.md 10.1 "Lock screen
+    // module") - not tied to a column, sits as a full-screen overlay.
+    window.mods.lockscreen = new LockScreen();
+
     // Left column
     window.mods.clock = new Clock("mod_column_left");
+    window.mods.volumecontrol = new VolumeControl("mod_column_left");
     window.mods.sysinfo = new Sysinfo("mod_column_left");
     window.mods.hardwareInspector = new HardwareInspector("mod_column_left");
     window.mods.cpuinfo = new Cpuinfo("mod_column_left");
@@ -1084,6 +1089,11 @@ window.openSettings = async () => {
                         </select></td>
                     </tr>
                     <tr>
+                        <td>lockPassword</td>
+                        <td>Password for the lock screen (Ctrl+Shift+Z). Leave blank to keep the current<br>password${window.settings.lockPasswordHash ? " (one is currently set)" : " (none set - lock screen is disabled until you set one)"}.</td>
+                        <td><input type="password" id="settingsEditor-lockPassword" autocomplete="new-password" placeholder="${window.settings.lockPasswordHash ? "•••• (unchanged)" : "No password set"}"></td>
+                    </tr>
+                    <tr>
                         <td>allowWindowed</td>
                         <td>Allow using F11 key to set the UI in windowed mode</td>
                         <td><select id="settingsEditor-allowWindowed">
@@ -1172,6 +1182,11 @@ window.writeFile = (path) => {
 };
 
 window.writeSettingsFile = () => {
+    let newLockPassword = document.getElementById("settingsEditor-lockPassword").value;
+    let lockPasswordFields = newLockPassword
+        ? LockScreen.hashPassword(newLockPassword)
+        : {lockPasswordHash: window.settings.lockPasswordHash, lockPasswordSalt: window.settings.lockPasswordSalt};
+
     window.settings = {
         shell: document.getElementById("settingsEditor-shell").value,
         shellArgs: document.getElementById("settingsEditor-shellArgs").value,
@@ -1191,6 +1206,8 @@ window.writeSettingsFile = () => {
         nointro: (document.getElementById("settingsEditor-nointro").value === "true"),
         nocursor: (document.getElementById("settingsEditor-nocursor").value === "true"),
         iface: document.getElementById("settingsEditor-iface").value,
+        lockPasswordHash: lockPasswordFields.lockPasswordHash,
+        lockPasswordSalt: lockPasswordFields.lockPasswordSalt,
         allowWindowed: (document.getElementById("settingsEditor-allowWindowed").value === "true"),
         forceFullscreen: window.settings.forceFullscreen,
         keepGeometry: (document.getElementById("settingsEditor-keepGeometry").value === "true"),
@@ -1243,6 +1260,7 @@ window.openShortcutsHelp = () => {
         "FS_LIST_VIEW": "Toggle between list and grid view in the file browser.",
         "FS_DOTFILES": "Toggle hidden files and directories in the file browser.",
         "KB_PASSMODE": "Toggle the on-screen keyboard's \"Password Mode\", which allows you to safely<br>type sensitive information even if your screen might be recorded (disable visual input feedback).",
+        "LOCK_SCREEN": "Lock the screen behind a password prompt (set one first in Settings). This is a privacy<br>screen to deter casual snooping, not a hardened security boundary.",
         "DEV_DEBUG": "Open Chromium Dev Tools, for debugging purposes.",
         "DEV_RELOAD": "Trigger front-end hot reload."
     };
@@ -1579,6 +1597,14 @@ window.runShellCommand = (cmd, label) => {
 };
 
 window.useAppShortcut = action => {
+    // While locked, only the LOCK_SCREEN action itself is allowed through
+    // (it just no-ops below since we're already locked) - everything else
+    // (tab switching, settings, dev tools, etc.) is blocked so the global
+    // OS-level shortcuts can't be used to peek/interact around the overlay.
+    if (window.mods && window.mods.lockscreen && window.mods.lockscreen.locked && action !== "LOCK_SCREEN") {
+        return false;
+    }
+
     switch(action) {
         case "COPY":
             window.term[window.currentTerm].clipboard.copy();
@@ -1652,6 +1678,9 @@ window.useAppShortcut = action => {
             return true;
         case "KB_PASSMODE":
             window.keyboard.togglePasswordMode();
+            return true;
+        case "LOCK_SCREEN":
+            if (window.mods && window.mods.lockscreen) window.mods.lockscreen.lock();
             return true;
         case "DEV_DEBUG":
             electron.remote.getCurrentWindow().webContents.toggleDevTools();

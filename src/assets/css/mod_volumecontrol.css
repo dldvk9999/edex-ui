@@ -1,0 +1,95 @@
+div#mod_volumecontrol {
+    border-top: 0.092vh solid rgba(var(--color_r), var(--color_g), var(--color_b), 0.3);
+    font-family: var(--font_main_light);
+    letter-spacing: 0.092vh;
+    padding: 0vh;
+    padding-top: 0.645vh;
+    padding-bottom: 0.6vh;
+}
+
+div#mod_volumecontrol::before {
+    content: "";
+    border-left: 0.092vh solid rgba(var(--color_r), var(--color_g), var(--color_b), 0.3);
+    position: relative;
+    left: -0.092vh;
+    top: -1.111vh;
+    height: 0.833vh;
+}
+
+div#mod_volumecontrol::after {
+    content: "";
+    border-right: 0.092vh solid rgba(var(--color_r), var(--color_g), var(--color_b), 0.3);
+    position: relative;
+    right: -0.092vh;
+    top: -1.111vh;
+    height: 0.833vh;
+}
+
+div#mod_volumecontrol > h1 {
+    font-size: 1.48vh;
+    margin: 0vh;
+    width: 98%;
+    padding-left: 2%;
+    margin-bottom: 0.4vh;
+}
+
+div#mod_volumecontrol > h1 > i {
+    font-style: normal;
+    font-size: 1.20vh;
+    opacity: 0.7;
+    text-align: right;
+    display: inline-block;
+    float: right;
+}
+
+div#mod_volumecontrol_inner {
+    display: flex;
+    align-items: center;
+    padding: 0vh 0.5vh;
+    gap: 0.6vh;
+}
+
+button#mod_volumecontrol_mutebtn {
+    background: transparent;
+    border: 0.15vh solid rgba(var(--color_r), var(--color_g), var(--color_b), 0.6);
+    color: rgb(var(--color_r), var(--color_g), var(--color_b));
+    font-family: var(--font_main_light);
+    font-size: 1vh;
+    letter-spacing: 0.092vh;
+    padding: 0.3vh 0.5vh;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+button#mod_volumecontrol_mutebtn:hover {
+    background: rgba(var(--color_r), var(--color_g), var(--color_b), 0.3);
+}
+
+button#mod_volumecontrol_mutebtn.active {
+    background: rgb(var(--color_r), var(--color_g), var(--color_b));
+    color: var(--color_light_black);
+}
+
+input#mod_volumecontrol_slider {
+    flex-grow: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 0.25vh;
+    background: rgba(var(--color_r), var(--color_g), var(--color_b), 0.4);
+    outline: none;
+    cursor: pointer;
+}
+
+input#mod_volumecontrol_slider:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+input#mod_volumecontrol_slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 0.9vh;
+    height: 0.9vh;
+    background: rgb(var(--color_r), var(--color_g), var(--color_b));
+    cursor: pointer;
+}
