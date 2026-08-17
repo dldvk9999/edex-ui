@@ -51,10 +51,24 @@ class UpdateChecker {
                         } else if (Number(release.tag_name.slice(1).replace(/\./g, "")) < Number(current.replace("-pre", "").replace(/\./g, ""))) {
                             electron.ipcRenderer.send("log", "info", "UpdateChecker: Running an unreleased, development version.");
                         } else {
+                            // release.tag_name/html_url come from GitHub's API for
+                            // this repo - normally trustworthy, but git tag names
+                            // allow characters like <, >, ", ', ` (git only bans
+                            // control chars, space, ~^:?*[\), so a compromised
+                            // release (bad token, malicious collaborator) could
+                            // otherwise inject HTML/JS here. Given nodeIntegration
+                            // is on (docs/07-security.md), that's not "just XSS" -
+                            // it's RCE. tag_name sits in plain HTML text, html_url
+                            // sits inside a single-quoted JS string that's itself
+                            // inside an HTML attribute, so it needs both escapes -
+                            // see the note on Modal's button rendering for why
+                            // _escapeJsString alone isn't enough there.
+                            let safeTag = window._escapeHtml(release.tag_name);
+                            let safeUrl = window._escapeHtml(window._escapeJsString(release.html_url));
                             new Modal({
                                 type: "info",
                                 title: "New version available",
-                                message: `eDEX-UI <strong>${release.tag_name}</strong> is now available.<br/>Head over to <a href="#" onclick="require('electron').shell.openExternal('${release.html_url}')">github.com</a> to download the latest version.`
+                                message: `eDEX-UI <strong>${safeTag}</strong> is now available.<br/>Head over to <a href="#" onclick="require('electron').shell.openExternal('${safeUrl}')">github.com</a> to download the latest version.`
                             });
                             electron.ipcRenderer.send("log", "info", `UpdateChecker: New version ${release.tag_name} available.`);
                         }

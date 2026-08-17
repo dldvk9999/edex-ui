@@ -53,7 +53,19 @@ class Modal {
             ${this.type === "custom" ? options.html : "<h5>"+this.message+"</h5>"}
             <div>`;
             buttons.forEach(b => {
-                DOMstring += `<button onclick="${b.action}">${b.label}</button>`;
+                // b.action is JS source (e.g. window.modals['xyz'].close();), not
+                // plain text - HTML-escaping it here is safe/transparent for that
+                // case since the browser HTML-decodes the attribute back to the
+                // exact same string before handing it to the JS engine. What this
+                // actually protects against: any caller that interpolates
+                // untrusted data into an action string (already expected to run
+                // it through window._escapeJsString for the JS-string context)
+                // still has that interpolated value living inside an HTML
+                // attribute one level up - without this, a raw `"` in the
+                // untrusted value would terminate the onclick attribute early
+                // regardless of any JS-level escaping, since HTML doesn't
+                // recognize backslash-escaped quotes.
+                DOMstring += `<button onclick="${window._escapeHtml(b.action)}">${b.label}</button>`;
             });
         DOMstring += `</div>
         </div>`;
