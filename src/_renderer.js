@@ -796,18 +796,12 @@ window.spawnShellTab = (number, cwd, autoFocus) => {
     });
 };
 
-// Renders a shell tab's label: the user-set custom name takes priority
-// over the default "MAIN - <process>" / "#N - <process>" label.
-window._escapeHTML = str => String(str).replace(/[&<>"']/g, c => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
-}[c]));
-
 window.updateShellTabLabel = (number, processName) => {
     let el = document.getElementById("shell_tab"+number);
     if (!el) return;
 
     if (window.tabNames[number]) {
-        el.innerHTML = `<p>${window._escapeHTML(window.tabNames[number])}</p>`;
+        el.innerHTML = `<p>${window._escapeHtml(window.tabNames[number])}</p>`;
         return;
     }
 
@@ -826,7 +820,7 @@ window.renameShellTab = number => {
     let modal = new Modal({
         type: "custom",
         title: "Rename Tab",
-        html: `<input type="text" id="tabRenameInput" maxlength="20" placeholder="Tab name..." value="${window._escapeHTML(window.tabNames[number] || "")}" />`,
+        html: `<input type="text" id="tabRenameInput" maxlength="20" placeholder="Tab name..." value="${window._escapeHtml(window.tabNames[number] || "")}" />`,
         buttons: [
             {label: "Reset", action: `window.applyTabRename(${number}, true)`},
             {label: "Rename", action: `window.applyTabRename(${number})`}
@@ -1177,7 +1171,7 @@ window.toggleFullScreen = () => {
 // editing trigger/enabled, since their `action` is a fixed known value.
 // Shell-type (custom command) entries are fully editable and can be added/removed.
 window.openShortcutsHelp = () => {
-    if (document.getElementById("settingsEditor")) return;
+    if (document.getElementById("shortcutsHelpCustomTable")) return;
 
     const shortcutsDefinition = {
         "COPY": "Copy selected buffer from the terminal.",
@@ -1203,9 +1197,9 @@ window.openShortcutsHelp = () => {
         let action = (cut.action.startsWith("TAB_")) ? "TAB_X" : cut.action;
         let hint = (cut.action === "TAB_X") ? ` title="Keep the letter X in the trigger - it gets replaced with 1-5 to build each tab's shortcut"` : "";
 
-        appList += `<tr data-shortcut-row="app" data-action="${window._escapeHTML(cut.action)}">
+        appList += `<tr data-shortcut-row="app" data-action="${window._escapeHtml(cut.action)}">
                         <td><input type="checkbox" class="shortcutsHelp-enabled" ${cut.enabled ? "checked" : ""}></td>
-                        <td><input type="text" class="shortcutsHelp-trigger" maxlength=25 value="${window._escapeHTML(cut.trigger)}"${hint}></td>
+                        <td><input type="text" class="shortcutsHelp-trigger" maxlength=25 value="${window._escapeHtml(cut.trigger)}"${hint}></td>
                         <td>${shortcutsDefinition[action]}</td>
                     </tr>`;
     });
@@ -1214,9 +1208,9 @@ window.openShortcutsHelp = () => {
     window.shortcuts.filter(e => e.type === "shell").forEach(cut => {
         customList += `<tr data-shortcut-row="shell">
                             <td><input type="checkbox" class="shortcutsHelp-enabled" ${cut.enabled ? "checked" : ""}></td>
-                            <td><input type="text" class="shortcutsHelp-trigger" maxlength=25 value="${window._escapeHTML(cut.trigger)}"></td>
+                            <td><input type="text" class="shortcutsHelp-trigger" maxlength=25 value="${window._escapeHtml(cut.trigger)}"></td>
                             <td>
-                                <input type="text" class="shortcutsHelp-command" placeholder="Run terminal command..." value="${window._escapeHTML(cut.action)}">
+                                <input type="text" class="shortcutsHelp-command" placeholder="Run terminal command..." value="${window._escapeHtml(cut.action)}">
                                 <input type="checkbox" class="shortcutsHelp-linebreak" ${cut.linebreak ? "checked" : ""}>
                                 <span>Enter</span>
                             </td>
@@ -1341,18 +1335,18 @@ window.saveShortcuts = () => {
 // from the DOM on save/connect, no separate in-memory form state to keep in
 // sync.
 window.openSSHProfiles = () => {
-    if (document.getElementById("settingsEditor")) return;
+    if (document.getElementById("sshProfilesTable")) return;
 
     let rows = "";
     window.sshProfiles.forEach(p => {
         rows += `<tr data-ssh-row>
-                    <td><input type="text" class="sshProfile-name" placeholder="My server" value="${window._escapeHTML(p.name || "")}"></td>
-                    <td><input type="text" class="sshProfile-host" placeholder="example.com" value="${window._escapeHTML(p.host || "")}"></td>
-                    <td><input type="number" class="sshProfile-port" placeholder="22" value="${window._escapeHTML(p.port || "")}"></td>
-                    <td><input type="text" class="sshProfile-username" placeholder="root" value="${window._escapeHTML(p.username || "")}"></td>
+                    <td><input type="text" class="sshProfile-name" placeholder="My server" value="${window._escapeHtml(p.name || "")}"></td>
+                    <td><input type="text" class="sshProfile-host" placeholder="example.com" value="${window._escapeHtml(p.host || "")}"></td>
+                    <td><input type="number" class="sshProfile-port" placeholder="22" value="${window._escapeHtml(p.port || "")}"></td>
+                    <td><input type="text" class="sshProfile-username" placeholder="root" value="${window._escapeHtml(p.username || "")}"></td>
                     <td>
                         <div class="sshProfile-identity-wrap">
-                            <input type="text" class="sshProfile-identity" placeholder="~/.ssh/id_rsa (optional)" value="${window._escapeHTML(p.identityFile || "")}">
+                            <input type="text" class="sshProfile-identity" placeholder="~/.ssh/id_rsa (optional)" value="${window._escapeHtml(p.identityFile || "")}">
                             <button type="button" onclick="window.browseSSHIdentityFile(this)">...</button>
                         </div>
                     </td>

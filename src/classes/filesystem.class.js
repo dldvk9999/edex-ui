@@ -622,7 +622,7 @@ class FilesystemDisplay {
                                     title: "Failed to load file: " + block.path,
                                     html: err
                                 });
-                                console.log(err);
+                                console.warn(err);
                             };
                             window.keyboard.detach();
                             new Modal(
