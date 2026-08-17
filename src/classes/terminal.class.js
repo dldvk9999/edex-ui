@@ -426,6 +426,18 @@ class Terminal {
 
             this.wss = new this.Websocket({
                 port: this.port,
+                // No `host` here means Node's default TCP bind, which is ALL
+                // network interfaces (0.0.0.0 / ::) - not just localhost. That's
+                // a real exposure on top of the CSWSH fix below: the CSWSH check
+                // only stops *browsers* (they always send an Origin header), but
+                // a plain non-browser websocket client on the same network never
+                // sends one, sails through `verifyClient`'s "no origin = allow"
+                // branch, and gets a raw shell. eDEX-UI has no remote-access
+                // feature (docs/01-overview.md) - this was never meant to be
+                // reachable off the local machine. Binding to loopback closes
+                // that off entirely, for every terminal server (main tab and
+                // each of the up to 4 extra tabs all go through this same code).
+                host: "127.0.0.1",
                 clientTracking: true,
                 verifyClient: info => {
                     if (this.wss.clients.length >= 1) {
