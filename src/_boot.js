@@ -138,30 +138,25 @@ if (!fs.existsSync(sshProfilesFile)) {
 
 // Copy default themes & keyboard layouts & fonts
 signale.pending("Mirroring internal assets...");
-try {
-    fs.mkdirSync(themesDir);
-} catch(e) {
-    // Folder already exists
+// mkdir-if-missing + copy every file from the bundled inner dir into the
+// user-writable outer one. `binary: true` skips the utf-8 decode/re-encode
+// round-trip for font files, which aren't text.
+function mirrorAssetDir(innerDir, outerDir, binary) {
+    try {
+        fs.mkdirSync(outerDir);
+    } catch (e) {
+        // Folder already exists
+    }
+    fs.readdirSync(innerDir).forEach(e => {
+        let content = binary
+            ? fs.readFileSync(path.join(innerDir, e))
+            : fs.readFileSync(path.join(innerDir, e), {encoding: "utf-8"});
+        fs.writeFileSync(path.join(outerDir, e), content);
+    });
 }
-fs.readdirSync(innerThemesDir).forEach(e => {
-    fs.writeFileSync(path.join(themesDir, e), fs.readFileSync(path.join(innerThemesDir, e), {encoding:"utf-8"}));
-});
-try {
-    fs.mkdirSync(kblayoutsDir);
-} catch(e) {
-    // Folder already exists
-}
-fs.readdirSync(innerKblayoutsDir).forEach(e => {
-    fs.writeFileSync(path.join(kblayoutsDir, e), fs.readFileSync(path.join(innerKblayoutsDir, e), {encoding:"utf-8"}));
-});
-try {
-    fs.mkdirSync(fontsDir);
-} catch(e) {
-    // Folder already exists
-}
-fs.readdirSync(innerFontsDir).forEach(e => {
-    fs.writeFileSync(path.join(fontsDir, e), fs.readFileSync(path.join(innerFontsDir, e)));
-});
+mirrorAssetDir(innerThemesDir, themesDir, false);
+mirrorAssetDir(innerKblayoutsDir, kblayoutsDir, false);
+mirrorAssetDir(innerFontsDir, fontsDir, true);
 
 // Version history logging
 const versionHistoryPath = path.join(electron.app.getPath("userData"), "versions_log.json");
