@@ -44,6 +44,17 @@ env:
   # Release the normal way) for that instead.
   PUBLISH_POLICY: ${{ (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && 'always' || 'never' }}
 
+  # Every build/publish invocation below also passes explicit -c.publish.*
+  # CLI overrides (draft=false, prerelease=false, releaseType=release) in
+  # addition to package.json's build.publish config. Belt-and-suspenders:
+  # electron-builder has had long-standing, still-reproducing-in-23.x bugs
+  # where a persistent releaseType/draft config doesn't reliably reach the
+  # actual publish decision (electron-userland/electron-builder#2393,
+  # #8179 - "existing type not compatible with publishing type
+  # existingType=release publishingType=draft", silently skips every
+  # asset, exits 0 regardless). CLI-level overrides sidestep that. See
+  # docs/06-build-and-deployment.md 6.5.1 for the full v2.3.1 postmortem.
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest
@@ -86,7 +97,7 @@ jobs:
     - name: Run prebuild script
       run: npm run prebuild-linux
     - name: Build for x64 / ia32
-      run: ./node_modules/.bin/electron-builder build -l --x64 --ia32 --publish ${{ env.PUBLISH_POLICY }}
+      run: ./node_modules/.bin/electron-builder build -l --x64 --ia32 --publish ${{ env.PUBLISH_POLICY }} -c.publish.provider=github -c.publish.releaseType=release -c.publish.draft=false -c.publish.prerelease=false
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/upload-artifact@v4
@@ -125,7 +136,7 @@ jobs:
     - name: Build for arm32v7 (aka armv7l)
       uses: docker://arm32v7/node:14-buster
       with:
-        args: bash -c "npm i -g npm@7 && npm config set fetch-retries 5 && npm config set fetch-retry-mintimeout 20000 && npm config set fetch-timeout 600000 && for i in 1 2 3; do npm install && break; echo 'npm install failed (attempt '$i'), retrying...'; sleep 15; done && for i in 1 2 3; do ./node_modules/.bin/electron-builder build -l --armv7l --publish ${{ env.PUBLISH_POLICY }} && break; echo 'build failed (attempt '$i'), retrying...'; sleep 15; done"
+        args: bash -c "npm i -g npm@7 && npm config set fetch-retries 5 && npm config set fetch-retry-mintimeout 20000 && npm config set fetch-timeout 600000 && for i in 1 2 3; do npm install && break; echo 'npm install failed (attempt '$i'), retrying...'; sleep 15; done && for i in 1 2 3; do ./node_modules/.bin/electron-builder build -l --armv7l --publish ${{ env.PUBLISH_POLICY }} -c.publish.provider=github -c.publish.releaseType=release -c.publish.draft=false -c.publish.prerelease=false && break; echo 'build failed (attempt '$i'), retrying...'; sleep 15; done"
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/upload-artifact@v4
@@ -164,7 +175,7 @@ jobs:
     - name: Build for arm64 (aka arm64v8)
       uses: docker://arm64v8/node:14-buster
       with:
-        args: bash -c "npm i -g npm@7 && npm config set fetch-retries 5 && npm config set fetch-retry-mintimeout 20000 && npm config set fetch-timeout 600000 && for i in 1 2 3; do npm install && break; echo 'npm install failed (attempt '$i'), retrying...'; sleep 15; done && for i in 1 2 3; do ./node_modules/.bin/electron-builder build -l --arm64 --publish ${{ env.PUBLISH_POLICY }} && break; echo 'build failed (attempt '$i'), retrying...'; sleep 15; done"
+        args: bash -c "npm i -g npm@7 && npm config set fetch-retries 5 && npm config set fetch-retry-mintimeout 20000 && npm config set fetch-timeout 600000 && for i in 1 2 3; do npm install && break; echo 'npm install failed (attempt '$i'), retrying...'; sleep 15; done && for i in 1 2 3; do ./node_modules/.bin/electron-builder build -l --arm64 --publish ${{ env.PUBLISH_POLICY }} -c.publish.provider=github -c.publish.releaseType=release -c.publish.draft=false -c.publish.prerelease=false && break; echo 'build failed (attempt '$i'), retrying...'; sleep 15; done"
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/upload-artifact@v4
@@ -237,7 +248,7 @@ jobs:
           sleep 10
         done
     - name: npm build
-      run: npm run build-windows -- --publish ${{ env.PUBLISH_POLICY }}
+      run: npm run build-windows -- --publish ${{ env.PUBLISH_POLICY }} -c.publish.provider=github -c.publish.releaseType=release -c.publish.draft=false -c.publish.prerelease=false
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/upload-artifact@v4
@@ -301,7 +312,7 @@ jobs:
     - name: npm build
       run: |
         for i in 1 2 3; do
-          npm run build-darwin -- --publish ${{ env.PUBLISH_POLICY }} && break
+          npm run build-darwin -- --publish ${{ env.PUBLISH_POLICY }} -c.publish.provider=github -c.publish.releaseType=release -c.publish.draft=false -c.publish.prerelease=false && break
           echo "build failed (attempt $i), retrying..."
           sleep 15
         done
