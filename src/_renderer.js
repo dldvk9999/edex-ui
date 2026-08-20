@@ -605,8 +605,57 @@ async function initUI() {
         }
     }
 
-    window.updateCheck = new UpdateChecker();
+    // On platforms/runs where the real auto-updater above is active
+    // (non-macOS, packaged), skip this GitHub-API-polling notify-only
+    // checker so users don't get two separate "update available" prompts
+    // for the same release. Kept as the sole update check on macOS
+    // (unsigned build, electron-updater doesn't work there) and in dev
+    // runs (nothing installed for electron-updater to replace).
+    if (process.platform === "darwin" || !remote.app.isPackaged) {
+        window.updateCheck = new UpdateChecker();
+    }
 }
+
+// Real in-app auto-update, main-process side in _boot.js (docs/10-todo.md
+// 10.3). Not gated behind a settings toggle for the same reason the
+// existing GitHub-polling UpdateChecker below isn't either - checking is
+// always on, but nothing downloads or installs without the user clicking
+// through one of these two prompts.
+ipc.on("autoupdate", (e, type, payload) => {
+    switch (type) {
+        case "available":
+            window.activeUpdateModal = new Modal({
+                type: "custom",
+                title: "Update available",
+                html: `<h5>eDEX-UI <strong>${window._escapeHtml(payload.version)}</strong> is available. Download it now? eDEX-UI will restart to finish installing once it's downloaded.</h5>`,
+                buttons: [
+                    {label: "Download", action: "window._triggerAutoUpdateDownload()"}
+                ]
+            });
+            break;
+        case "downloaded":
+            window.activeUpdateModal = new Modal({
+                type: "custom",
+                title: "Update ready",
+                html: `<h5>Update downloaded. Restart eDEX-UI now to finish installing it?</h5>`,
+                buttons: [
+                    {label: "Restart now", action: "window._triggerAutoUpdateInstall()"}
+                ]
+            });
+            break;
+    }
+});
+
+window._triggerAutoUpdateDownload = () => {
+    if (window.activeUpdateModal) window.activeUpdateModal.close();
+    ipc.send("autoupdate-action", "download");
+};
+
+window._triggerAutoUpdateInstall = () => {
+    // Deliberately not closing the modal here - quitAndInstall() below
+    // tears the whole app down within a second or two anyway.
+    ipc.send("autoupdate-action", "install");
+};
 
 window.themeChanger = theme => {
     ipc.send("setThemeOverride", theme);

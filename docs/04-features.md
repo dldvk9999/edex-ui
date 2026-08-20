@@ -48,7 +48,7 @@
 ## 4.8 Other
 - Fuzzy finder (Ctrl+Shift+F) — quick file/command search
 - SSH profile manager (Ctrl+Shift+O) — save host/port/username/identity file per profile, one-click connect opens a new tab and runs `ssh` immediately
-- Update checker (polls GitHub Releases)
+- Real in-app auto-update on Windows/Linux packaged builds (`electron-updater`, checks on startup, downloads/installs only after explicit confirmation each step) — skipped on macOS (unsigned builds, electron-updater's macOS backend needs code signing) and dev runs, where the app instead falls back to a lightweight GitHub-Releases-polling notification with a manual download link
 - Boot intro animation (skippable via the `--nointro` flag)
 - Multi-monitor support (`settings.monitor` index selection)
 - Switchable between forced fullscreen and windowed mode (`allowWindowed`)
