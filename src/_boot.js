@@ -116,6 +116,7 @@ if (!fs.existsSync(shortcutsFile)) {
         { type: "app", trigger: "Ctrl+Shift+L", action: "FS_LIST_VIEW", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+H", action: "FS_DOTFILES", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+P", action: "KB_PASSMODE", enabled: true },
+        { type: "app", trigger: "Ctrl+Shift+Z", action: "LOCK_SCREEN", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+I", action: "DEV_DEBUG", enabled: false },
         { type: "app", trigger: "Ctrl+Shift+F5", action: "DEV_RELOAD", enabled: true },
         { type: "shell", trigger: "Ctrl+Shift+Alt+Space", action: "neofetch", linebreak: true, enabled: false }
@@ -137,30 +138,25 @@ if (!fs.existsSync(sshProfilesFile)) {
 
 // Copy default themes & keyboard layouts & fonts
 signale.pending("Mirroring internal assets...");
-try {
-    fs.mkdirSync(themesDir);
-} catch(e) {
-    // Folder already exists
+// mkdir-if-missing + copy every file from the bundled inner dir into the
+// user-writable outer one. `binary: true` skips the utf-8 decode/re-encode
+// round-trip for font files, which aren't text.
+function mirrorAssetDir(innerDir, outerDir, binary) {
+    try {
+        fs.mkdirSync(outerDir);
+    } catch (e) {
+        // Folder already exists
+    }
+    fs.readdirSync(innerDir).forEach(e => {
+        let content = binary
+            ? fs.readFileSync(path.join(innerDir, e))
+            : fs.readFileSync(path.join(innerDir, e), {encoding: "utf-8"});
+        fs.writeFileSync(path.join(outerDir, e), content);
+    });
 }
-fs.readdirSync(innerThemesDir).forEach(e => {
-    fs.writeFileSync(path.join(themesDir, e), fs.readFileSync(path.join(innerThemesDir, e), {encoding:"utf-8"}));
-});
-try {
-    fs.mkdirSync(kblayoutsDir);
-} catch(e) {
-    // Folder already exists
-}
-fs.readdirSync(innerKblayoutsDir).forEach(e => {
-    fs.writeFileSync(path.join(kblayoutsDir, e), fs.readFileSync(path.join(innerKblayoutsDir, e), {encoding:"utf-8"}));
-});
-try {
-    fs.mkdirSync(fontsDir);
-} catch(e) {
-    // Folder already exists
-}
-fs.readdirSync(innerFontsDir).forEach(e => {
-    fs.writeFileSync(path.join(fontsDir, e), fs.readFileSync(path.join(innerFontsDir, e)));
-});
+mirrorAssetDir(innerThemesDir, themesDir, false);
+mirrorAssetDir(innerKblayoutsDir, kblayoutsDir, false);
+mirrorAssetDir(innerFontsDir, fontsDir, true);
 
 // Version history logging
 const versionHistoryPath = path.join(electron.app.getPath("userData"), "versions_log.json");
@@ -296,6 +292,58 @@ app.on('ready', async () => {
     require("./_multithread.js");
 
     createWindow(settings);
+
+    // Real in-app auto-update (docs/10-todo.md 10.3), building on the
+    // publish config in package.json (electron-builder already writes the
+    // latest.yml/app-update.yml metadata electron-updater reads at build
+    // time, since "publish" is configured there).
+    //
+    // Skipped entirely on macOS: electron-updater's Squirrel.Mac backend
+    // needs a code-signed app to work, and this project ships unsigned
+    // .dmg builds on purpose (docs/06-build-and-deployment.md - no Apple
+    // Developer certificate available). Trying to auto-update there would
+    // just fail (or worse, half-succeed into a broken app bundle). macOS
+    // users still get the existing GitHub-Releases-polling notification
+    // (updateChecker.class.js, renderer-side) telling them a new version
+    // exists and linking out to download it manually - that one doesn't
+    // depend on code signing since it never touches the installed bundle.
+    //
+    // Also skipped when running unpackaged (`npm start` / dev), since
+    // there's no installed app for electron-updater to replace.
+    if (process.platform !== "darwin" && app.isPackaged) {
+        const { autoUpdater } = require("electron-updater");
+        autoUpdater.autoDownload = false;
+        autoUpdater.autoInstallOnAppQuit = false;
+
+        autoUpdater.on("update-available", info => {
+            signale.info(`electron-updater: update ${info.version} available`);
+            if (win && !win.isDestroyed()) win.webContents.send("autoupdate", "available", {version: info.version});
+        });
+        autoUpdater.on("update-not-available", () => {
+            signale.info("electron-updater: already up to date");
+        });
+        autoUpdater.on("update-downloaded", () => {
+            signale.success("electron-updater: update downloaded, ready to install");
+            if (win && !win.isDestroyed()) win.webContents.send("autoupdate", "downloaded");
+        });
+        autoUpdater.on("error", e => {
+            // Never fatal - worst case, the user just doesn't get an
+            // auto-update prompt this run and can still update manually.
+            signale.warn(`electron-updater: ${e.message}`);
+        });
+
+        ipc.on("autoupdate-action", (e, action) => {
+            if (action === "download") autoUpdater.downloadUpdate().catch(e => signale.warn(`electron-updater: download failed: ${e.message}`));
+            if (action === "install") autoUpdater.quitAndInstall();
+        });
+
+        // Give the window/renderer time to finish loading before checking,
+        // so the "update available" IPC message isn't sent before anything
+        // is listening for it.
+        setTimeout(() => {
+            autoUpdater.checkForUpdates().catch(e => signale.warn(`electron-updater: check failed: ${e.message}`));
+        }, 15000);
+    }
 
     // Support for more terminals, used for creating tabs (currently limited to 4 extra terms)
     extraTtys = {};

@@ -109,6 +109,12 @@ div.modal_popup button:hover {
     background: rgba(var(--color_r), var(--color_g), var(--color_b), 0.5);
 }
 
+div.modal_popup button:focus-visible {
+    background: rgba(var(--color_r), var(--color_g), var(--color_b), 0.5);
+    outline: 0.15vh solid rgb(var(--color_r), var(--color_g), var(--color_b));
+    outline-offset: 0.15vh;
+}
+
 div.modal_popup table, div.modal_popup table th, div.modal_popup table td {
     border: 0.15vh solid rgb(var(--color_r), var(--color_g), var(--color_b));
     border-collapse: collapse;
@@ -197,6 +203,10 @@ div.modal_popup summary {
     font-weight: normal;
     outline: none !important;
     cursor: pointer;
+}
+
+div.modal_popup summary:focus-visible {
+    outline: 0.15vh solid rgb(var(--color_r), var(--color_g), var(--color_b)) !important;
 }
 
 div.modal_popup summary+table {

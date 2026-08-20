@@ -107,6 +107,12 @@ class FuzzyFinder {
          }
          let html = "";
          results.forEach((file, i) => {
+             // file.name comes from window.fsDisp.cwd, which is already
+             // HTML-escaped at construction time (filesystem.class.js,
+             // `name: window._escapeHtml(file)`) - escaping it again here
+             // would double-encode entities (e.g. a literal "&" in a
+             // filename would render as the literal text "&amp;" instead
+             // of "&"). Confirmed safe to interpolate as-is.
              html += `<li id="fuzzyFinderMatch-${i}" class="${(i === 0) ? 'fuzzyFinderMatchSelected' : ''}" onclick="document.querySelector('li.fuzzyFinderMatchSelected').removeAttribute('class');document.getElementById('fuzzyFinderMatch-${i}').setAttribute('class', 'fuzzyFinderMatchSelected')">${file.name}</li>`;
         });
         if (results.length !== 5) {

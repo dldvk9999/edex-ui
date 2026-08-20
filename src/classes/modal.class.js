@@ -48,12 +48,24 @@ class Modal {
                 break;
         }
 
-        let DOMstring = `<div id="modal_${this.id}" class="${this.classes}" style="z-index:${zindex+Object.keys(window.modals).length};" augmented-ui="${augs.join(" ")} exe">
-            <h1>${this.title}</h1>
+        let DOMstring = `<div id="modal_${this.id}" class="${this.classes}" style="z-index:${zindex+Object.keys(window.modals).length};" augmented-ui="${augs.join(" ")} exe" role="dialog" aria-modal="true" aria-labelledby="modal_${this.id}_title" tabindex="-1">
+            <h1 id="modal_${this.id}_title">${this.title}</h1>
             ${this.type === "custom" ? options.html : "<h5>"+this.message+"</h5>"}
             <div>`;
             buttons.forEach(b => {
-                DOMstring += `<button onclick="${b.action}">${b.label}</button>`;
+                // b.action is JS source (e.g. window.modals['xyz'].close();), not
+                // plain text - HTML-escaping it here is safe/transparent for that
+                // case since the browser HTML-decodes the attribute back to the
+                // exact same string before handing it to the JS engine. What this
+                // actually protects against: any caller that interpolates
+                // untrusted data into an action string (already expected to run
+                // it through window._escapeJsString for the JS-string context)
+                // still has that interpolated value living inside an HTML
+                // attribute one level up - without this, a raw `"` in the
+                // untrusted value would terminate the onclick attribute early
+                // regardless of any JS-level escaping, since HTML doesn't
+                // recognize backslash-escaped quotes.
+                DOMstring += `<button onclick="${window._escapeHtml(b.action)}">${b.label}</button>`;
             });
         DOMstring += `</div>
         </div>`;
@@ -62,6 +74,8 @@ class Modal {
             let modalElement = document.getElementById("modal_"+this.id);
             modalElement.setAttribute("class", "modal_popup "+this.type+" blink");
             window.audioManager.denied.play();
+            document.removeEventListener("keydown", this._keydownHandler);
+            if (window._focusedModalId === this.id) delete window._focusedModalId;
             setTimeout(() => {
                 modalElement.remove();
                 delete window.modals[this.id];
@@ -70,11 +84,20 @@ class Modal {
             if (typeof this.onclose === "function") {
                 this.onclose();
             }
+
+            // Most callers' onclose already sends focus somewhere sensible (e.g.
+            // back into the terminal) - this is only a fallback for the case
+            // where focus was left stranded on <body> (docs/10-todo.md 10.2
+            // "Accessibility").
+            if (this._previouslyFocused && document.body.contains(this._previouslyFocused) && document.activeElement === document.body) {
+                this._previouslyFocused.focus();
+            }
         };
 
         this.focus = () => {
             let modalElement = document.getElementById("modal_"+this.id);
             modalElement.setAttribute("class", this.classes+" focus");
+            window._focusedModalId = this.id;
             Object.keys(window.modals).forEach(id => {
                 if (id === this.id) return;
                 window.modals[id].unfocus();
@@ -109,8 +132,47 @@ class Modal {
                 break;
         }
         window.modals[this.id] = this;
+        this._previouslyFocused = document.activeElement;
         document.body.appendChild(element);
         this.focus();
+
+        // Move focus into the modal (docs/10-todo.md 10.2 "Accessibility") -
+        // land on the first real control if there is one (e.g. an input in a
+        // form modal), otherwise the first button.
+        let firstFocusable = element.querySelector('input, select, textarea, button, [href]');
+        if (firstFocusable) firstFocusable.focus();
+
+        // Escape closes the modal, and Tab/Shift+Tab is trapped inside it
+        // while it's the focused one (window._focusedModalId, several modals
+        // can be stacked - see this.focus() above) rather than leaking focus
+        // out to the app underneath.
+        this._keydownHandler = e => {
+            if (window._focusedModalId !== this.id) return;
+
+            if (e.key === "Escape") {
+                e.preventDefault();
+                this.close();
+                return;
+            }
+
+            if (e.key !== "Tab") return;
+
+            let focusables = Array.from(element.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+                .filter(el => !el.disabled && el.offsetParent !== null);
+            if (focusables.length === 0) return;
+
+            let first = focusables[0];
+            let last = focusables[focusables.length - 1];
+
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        };
+        document.addEventListener("keydown", this._keydownHandler);
 
         // Allow dragging the modal around
         let draggedModal = document.getElementById(`modal_${this.id}`);

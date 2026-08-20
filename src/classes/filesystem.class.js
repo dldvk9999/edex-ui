@@ -277,7 +277,12 @@ class FilesystemDisplay {
                     }
 
                     devices.push({
-                        name: (block.label !== "") ? `${block.label} (${block.name})` : `${block.mount} (${block.name})`,
+                        // Volume label is attacker-influenceable on physical
+                        // media (anyone can format/relabel a USB drive with
+                        // whatever string they want) and, unlike the regular
+                        // file listing above, wasn't being escaped before
+                        // reaching the same unescaped-safe render() path.
+                        name: window._escapeHtml((block.label !== "") ? `${block.label} (${block.name})` : `${block.mount} (${block.name})`),
                         type,
                         path: block.mount
                     });
@@ -622,7 +627,7 @@ class FilesystemDisplay {
                                     title: "Failed to load file: " + block.path,
                                     html: err
                                 });
-                                console.log(err);
+                                console.warn(err);
                             };
                             window.keyboard.detach();
                             new Modal(

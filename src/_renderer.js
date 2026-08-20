@@ -464,8 +464,13 @@ async function initUI() {
     // Initialize modules
     window.mods = {};
 
+    // Screensaver-style privacy lock (docs/10-todo.md 10.1 "Lock screen
+    // module") - not tied to a column, sits as a full-screen overlay.
+    window.mods.lockscreen = new LockScreen();
+
     // Left column
     window.mods.clock = new Clock("mod_column_left");
+    window.mods.volumecontrol = new VolumeControl("mod_column_left");
     window.mods.sysinfo = new Sysinfo("mod_column_left");
     window.mods.hardwareInspector = new HardwareInspector("mod_column_left");
     window.mods.cpuinfo = new Cpuinfo("mod_column_left");
@@ -504,19 +509,19 @@ async function initUI() {
     // Initialize the terminal
     let shellContainer = document.getElementById("main_shell");
     shellContainer.innerHTML += `
-        <ul id="main_shell_tabs">
-            <li id="shell_tab0" onclick="window.focusShellTab(0);" ondblclick="window.renameShellTab(0);" class="active"><p>MAIN SHELL</p></li>
-            <li id="shell_tab1" draggable="true" ondragstart="window.tabDragStart(event, 1);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 1);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(1);" ondblclick="window.renameShellTab(1);"><p>EMPTY</p></li>
-            <li id="shell_tab2" draggable="true" ondragstart="window.tabDragStart(event, 2);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 2);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(2);" ondblclick="window.renameShellTab(2);"><p>EMPTY</p></li>
-            <li id="shell_tab3" draggable="true" ondragstart="window.tabDragStart(event, 3);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 3);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(3);" ondblclick="window.renameShellTab(3);"><p>EMPTY</p></li>
-            <li id="shell_tab4" draggable="true" ondragstart="window.tabDragStart(event, 4);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 4);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(4);" ondblclick="window.renameShellTab(4);"><p>EMPTY</p></li>
+        <ul id="main_shell_tabs" role="tablist" aria-label="Shell tabs">
+            <li id="shell_tab0" role="tab" tabindex="0" aria-selected="true" aria-controls="terminal0" onkeydown="window.tabKeydown(event, 0);" onclick="window.focusShellTab(0);" ondblclick="window.renameShellTab(0);" class="active"><p>MAIN SHELL</p></li>
+            <li id="shell_tab1" role="tab" tabindex="-1" aria-selected="false" aria-controls="terminal1" draggable="true" ondragstart="window.tabDragStart(event, 1);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 1);" ondragend="window.tabDragEnd(event);" onkeydown="window.tabKeydown(event, 1);" onclick="window.focusShellTab(1);" ondblclick="window.renameShellTab(1);"><p>EMPTY</p></li>
+            <li id="shell_tab2" role="tab" tabindex="-1" aria-selected="false" aria-controls="terminal2" draggable="true" ondragstart="window.tabDragStart(event, 2);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 2);" ondragend="window.tabDragEnd(event);" onkeydown="window.tabKeydown(event, 2);" onclick="window.focusShellTab(2);" ondblclick="window.renameShellTab(2);"><p>EMPTY</p></li>
+            <li id="shell_tab3" role="tab" tabindex="-1" aria-selected="false" aria-controls="terminal3" draggable="true" ondragstart="window.tabDragStart(event, 3);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 3);" ondragend="window.tabDragEnd(event);" onkeydown="window.tabKeydown(event, 3);" onclick="window.focusShellTab(3);" ondblclick="window.renameShellTab(3);"><p>EMPTY</p></li>
+            <li id="shell_tab4" role="tab" tabindex="-1" aria-selected="false" aria-controls="terminal4" draggable="true" ondragstart="window.tabDragStart(event, 4);" ondragover="window.tabDragOver(event);" ondrop="window.tabDrop(event, 4);" onkeydown="window.tabKeydown(event, 4);" ondragend="window.tabDragEnd(event);" onclick="window.focusShellTab(4);" ondblclick="window.renameShellTab(4);"><p>EMPTY</p></li>
         </ul>
         <div id="main_shell_innercontainer">
-            <pre id="terminal0" class="active"></pre>
-            <pre id="terminal1"></pre>
-            <pre id="terminal2"></pre>
-            <pre id="terminal3"></pre>
-            <pre id="terminal4"></pre>
+            <pre id="terminal0" class="active" role="tabpanel" aria-label="Main shell"></pre>
+            <pre id="terminal1" role="tabpanel" aria-label="Shell tab 1"></pre>
+            <pre id="terminal2" role="tabpanel" aria-label="Shell tab 2"></pre>
+            <pre id="terminal3" role="tabpanel" aria-label="Shell tab 3"></pre>
+            <pre id="terminal4" role="tabpanel" aria-label="Shell tab 4"></pre>
         </div>`;
     window.term = {
         0: new Terminal({
@@ -600,8 +605,57 @@ async function initUI() {
         }
     }
 
-    window.updateCheck = new UpdateChecker();
+    // On platforms/runs where the real auto-updater above is active
+    // (non-macOS, packaged), skip this GitHub-API-polling notify-only
+    // checker so users don't get two separate "update available" prompts
+    // for the same release. Kept as the sole update check on macOS
+    // (unsigned build, electron-updater doesn't work there) and in dev
+    // runs (nothing installed for electron-updater to replace).
+    if (process.platform === "darwin" || !remote.app.isPackaged) {
+        window.updateCheck = new UpdateChecker();
+    }
 }
+
+// Real in-app auto-update, main-process side in _boot.js (docs/10-todo.md
+// 10.3). Not gated behind a settings toggle for the same reason the
+// existing GitHub-polling UpdateChecker below isn't either - checking is
+// always on, but nothing downloads or installs without the user clicking
+// through one of these two prompts.
+ipc.on("autoupdate", (e, type, payload) => {
+    switch (type) {
+        case "available":
+            window.activeUpdateModal = new Modal({
+                type: "custom",
+                title: "Update available",
+                html: `<h5>eDEX-UI <strong>${window._escapeHtml(payload.version)}</strong> is available. Download it now? eDEX-UI will restart to finish installing once it's downloaded.</h5>`,
+                buttons: [
+                    {label: "Download", action: "window._triggerAutoUpdateDownload()"}
+                ]
+            });
+            break;
+        case "downloaded":
+            window.activeUpdateModal = new Modal({
+                type: "custom",
+                title: "Update ready",
+                html: `<h5>Update downloaded. Restart eDEX-UI now to finish installing it?</h5>`,
+                buttons: [
+                    {label: "Restart now", action: "window._triggerAutoUpdateInstall()"}
+                ]
+            });
+            break;
+    }
+});
+
+window._triggerAutoUpdateDownload = () => {
+    if (window.activeUpdateModal) window.activeUpdateModal.close();
+    ipc.send("autoupdate-action", "download");
+};
+
+window._triggerAutoUpdateInstall = () => {
+    // Deliberately not closing the modal here - quitAndInstall() below
+    // tears the whole app down within a second or two anyway.
+    ipc.send("autoupdate-action", "install");
+};
 
 window.themeChanger = theme => {
     ipc.send("setThemeOverride", theme);
@@ -701,6 +755,69 @@ window.renderTabOrder = () => {
     });
 };
 
+// Keyboard behavior for the shell tablist (docs/10-todo.md 10.2
+// "Accessibility"), following the WAI-ARIA tabs pattern with *manual*
+// activation: arrow keys only move focus (roving tabindex, see
+// window._moveTabFocus), Enter/Space actually switches tabs. Manual
+// activation is used here specifically because activating an empty slot
+// spawns a whole new TTY process - too expensive a side effect to trigger
+// just by arrowing past it.
+window.tabKeydown = (e, number) => {
+    let seq = [0, ...window.tabOrder];
+
+    switch (e.key) {
+        case "Enter":
+        case " ":
+            e.preventDefault();
+            window.focusShellTab(number);
+            return;
+        case "ArrowRight":
+        case "ArrowLeft": {
+            e.preventDefault();
+            let dir = (e.key === "ArrowRight") ? 1 : -1;
+
+            // Alt+Arrow on an extra tab reorders it - the keyboard equivalent
+            // of dragging it (window.tabDrop), for anyone who can't use a
+            // mouse/touch to reorder tabs.
+            if (e.altKey && number >= 1 && number <= 4) {
+                let from = window.tabOrder.indexOf(number);
+                let to = from + dir;
+                if (to < 0 || to >= window.tabOrder.length) return;
+                [window.tabOrder[from], window.tabOrder[to]] = [window.tabOrder[to], window.tabOrder[from]];
+                window.renderTabOrder();
+                window.saveSession();
+                document.getElementById("shell_tab"+number).focus();
+                return;
+            }
+
+            let idx = seq.indexOf(number);
+            window._moveTabFocus(seq[(idx + dir + seq.length) % seq.length]);
+            return;
+        }
+        case "Home":
+            e.preventDefault();
+            window._moveTabFocus(seq[0]);
+            return;
+        case "End":
+            e.preventDefault();
+            window._moveTabFocus(seq[seq.length - 1]);
+            return;
+    }
+};
+
+// Moves the single tab-stop (roving tabindex) to `number` and focuses it,
+// without activating it - i.e. without switching tabs or spawning
+// anything. Kept separate from focusShellTab's aria-selected/tabindex sync,
+// which only runs on actual activation.
+window._moveTabFocus = number => {
+    for (let n = 0; n <= 4; n++) {
+        let el = document.getElementById("shell_tab"+n);
+        if (el) el.setAttribute("tabindex", (n === number) ? "0" : "-1");
+    }
+    let target = document.getElementById("shell_tab"+number);
+    if (target) target.focus();
+};
+
 window.focusShellTab = number => {
     window.audioManager.folder.play();
 
@@ -712,7 +829,11 @@ window.focusShellTab = number => {
         // (docs/10-todo.md 10.2 "Tab reordering").
         for (let n = 0; n <= 4; n++) {
             let tabEl = document.getElementById("shell_tab"+n);
-            if (tabEl) tabEl.setAttribute("class", (n === number) ? "active" : "");
+            if (tabEl) {
+                tabEl.setAttribute("class", (n === number) ? "active" : "");
+                tabEl.setAttribute("aria-selected", (n === number) ? "true" : "false");
+                tabEl.setAttribute("tabindex", (n === number) ? "0" : "-1");
+            }
             let termEl = document.getElementById("terminal"+n);
             if (termEl) termEl.setAttribute("class", (n === number) ? "active" : "");
         }
@@ -791,18 +912,12 @@ window.spawnShellTab = (number, cwd, autoFocus) => {
     });
 };
 
-// Renders a shell tab's label: the user-set custom name takes priority
-// over the default "MAIN - <process>" / "#N - <process>" label.
-window._escapeHTML = str => String(str).replace(/[&<>"']/g, c => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
-}[c]));
-
 window.updateShellTabLabel = (number, processName) => {
     let el = document.getElementById("shell_tab"+number);
     if (!el) return;
 
     if (window.tabNames[number]) {
-        el.innerHTML = `<p>${window._escapeHTML(window.tabNames[number])}</p>`;
+        el.innerHTML = `<p>${window._escapeHtml(window.tabNames[number])}</p>`;
         return;
     }
 
@@ -821,7 +936,7 @@ window.renameShellTab = number => {
     let modal = new Modal({
         type: "custom",
         title: "Rename Tab",
-        html: `<input type="text" id="tabRenameInput" maxlength="20" placeholder="Tab name..." value="${window._escapeHTML(window.tabNames[number] || "")}" />`,
+        html: `<input type="text" id="tabRenameInput" maxlength="20" placeholder="Tab name..." value="${window._escapeHtml(window.tabNames[number] || "")}" />`,
         buttons: [
             {label: "Reset", action: `window.applyTabRename(${number}, true)`},
             {label: "Rename", action: `window.applyTabRename(${number})`}
@@ -1017,6 +1132,11 @@ window.openSettings = async () => {
                         </select></td>
                     </tr>
                     <tr>
+                        <td>lockPassword</td>
+                        <td>Password for the lock screen (Ctrl+Shift+Z). Leave blank to keep the current<br>password${window.settings.lockPasswordHash ? " (one is currently set)" : " (none set - lock screen is disabled until you set one)"}.</td>
+                        <td><input type="password" id="settingsEditor-lockPassword" autocomplete="new-password" placeholder="${window.settings.lockPasswordHash ? "•••• (unchanged)" : "No password set"}"></td>
+                    </tr>
+                    <tr>
                         <td>allowWindowed</td>
                         <td>Allow using F11 key to set the UI in windowed mode</td>
                         <td><select id="settingsEditor-allowWindowed">
@@ -1081,7 +1201,7 @@ window.openSettings = async () => {
                         </select></td>
                     </tr>
                 </table>
-                <h6 id="settingsEditorStatus">Loaded values from memory</h6>
+                <h6 id="settingsEditorStatus" aria-live="polite">Loaded values from memory</h6>
                 <br>`,
         buttons: [
             {label: "Open in External Editor", action:`electron.shell.openPath('${settingsFile}');electronWin.minimize();`},
@@ -1105,6 +1225,11 @@ window.writeFile = (path) => {
 };
 
 window.writeSettingsFile = () => {
+    let newLockPassword = document.getElementById("settingsEditor-lockPassword").value;
+    let lockPasswordFields = newLockPassword
+        ? LockScreen.hashPassword(newLockPassword)
+        : {lockPasswordHash: window.settings.lockPasswordHash, lockPasswordSalt: window.settings.lockPasswordSalt};
+
     window.settings = {
         shell: document.getElementById("settingsEditor-shell").value,
         shellArgs: document.getElementById("settingsEditor-shellArgs").value,
@@ -1124,6 +1249,8 @@ window.writeSettingsFile = () => {
         nointro: (document.getElementById("settingsEditor-nointro").value === "true"),
         nocursor: (document.getElementById("settingsEditor-nocursor").value === "true"),
         iface: document.getElementById("settingsEditor-iface").value,
+        lockPasswordHash: lockPasswordFields.lockPasswordHash,
+        lockPasswordSalt: lockPasswordFields.lockPasswordSalt,
         allowWindowed: (document.getElementById("settingsEditor-allowWindowed").value === "true"),
         forceFullscreen: window.settings.forceFullscreen,
         keepGeometry: (document.getElementById("settingsEditor-keepGeometry").value === "true"),
@@ -1160,7 +1287,7 @@ window.toggleFullScreen = () => {
 // editing trigger/enabled, since their `action` is a fixed known value.
 // Shell-type (custom command) entries are fully editable and can be added/removed.
 window.openShortcutsHelp = () => {
-    if (document.getElementById("settingsEditor")) return;
+    if (document.getElementById("shortcutsHelpCustomTable")) return;
 
     const shortcutsDefinition = {
         "COPY": "Copy selected buffer from the terminal.",
@@ -1176,6 +1303,7 @@ window.openShortcutsHelp = () => {
         "FS_LIST_VIEW": "Toggle between list and grid view in the file browser.",
         "FS_DOTFILES": "Toggle hidden files and directories in the file browser.",
         "KB_PASSMODE": "Toggle the on-screen keyboard's \"Password Mode\", which allows you to safely<br>type sensitive information even if your screen might be recorded (disable visual input feedback).",
+        "LOCK_SCREEN": "Lock the screen behind a password prompt (set one first in Settings). This is a privacy<br>screen to deter casual snooping, not a hardened security boundary.",
         "DEV_DEBUG": "Open Chromium Dev Tools, for debugging purposes.",
         "DEV_RELOAD": "Trigger front-end hot reload."
     };
@@ -1185,9 +1313,9 @@ window.openShortcutsHelp = () => {
         let action = (cut.action.startsWith("TAB_")) ? "TAB_X" : cut.action;
         let hint = (cut.action === "TAB_X") ? ` title="Keep the letter X in the trigger - it gets replaced with 1-5 to build each tab's shortcut"` : "";
 
-        appList += `<tr data-shortcut-row="app" data-action="${window._escapeHTML(cut.action)}">
+        appList += `<tr data-shortcut-row="app" data-action="${window._escapeHtml(cut.action)}">
                         <td><input type="checkbox" class="shortcutsHelp-enabled" ${cut.enabled ? "checked" : ""}></td>
-                        <td><input type="text" class="shortcutsHelp-trigger" maxlength=25 value="${window._escapeHTML(cut.trigger)}"${hint}></td>
+                        <td><input type="text" class="shortcutsHelp-trigger" maxlength=25 value="${window._escapeHtml(cut.trigger)}"${hint}></td>
                         <td>${shortcutsDefinition[action]}</td>
                     </tr>`;
     });
@@ -1196,13 +1324,13 @@ window.openShortcutsHelp = () => {
     window.shortcuts.filter(e => e.type === "shell").forEach(cut => {
         customList += `<tr data-shortcut-row="shell">
                             <td><input type="checkbox" class="shortcutsHelp-enabled" ${cut.enabled ? "checked" : ""}></td>
-                            <td><input type="text" class="shortcutsHelp-trigger" maxlength=25 value="${window._escapeHTML(cut.trigger)}"></td>
+                            <td><input type="text" class="shortcutsHelp-trigger" maxlength=25 value="${window._escapeHtml(cut.trigger)}"></td>
                             <td>
-                                <input type="text" class="shortcutsHelp-command" placeholder="Run terminal command..." value="${window._escapeHTML(cut.action)}">
+                                <input type="text" class="shortcutsHelp-command" placeholder="Run terminal command..." value="${window._escapeHtml(cut.action)}">
                                 <input type="checkbox" class="shortcutsHelp-linebreak" ${cut.linebreak ? "checked" : ""}>
                                 <span>Enter</span>
                             </td>
-                            <td><button type="button" onclick="this.closest('tr').remove()">✕</button></td>
+                            <td><button type="button" aria-label="Remove this shortcut" onclick="this.closest('tr').remove()">✕</button></td>
                         </tr>`;
     });
 
@@ -1236,7 +1364,7 @@ window.openShortcutsHelp = () => {
                     </table>
                     <button type="button" onclick="window.addCustomShortcutRow()">+ Add custom shortcut</button>
                 </details>
-                <h6 id="shortcutsHelpStatus">Loaded values from memory</h6>
+                <h6 id="shortcutsHelpStatus" aria-live="polite">Loaded values from memory</h6>
                 <br>`,
         buttons: [
             {label: "Open Shortcuts File", action:`electron.shell.openPath('${shortcutsFile}');electronWin.minimize();`},
@@ -1272,7 +1400,7 @@ window.addCustomShortcutRow = () => {
             <input type="checkbox" class="shortcutsHelp-linebreak">
             <span>Enter</span>
         </td>
-        <td><button type="button" onclick="this.closest('tr').remove()">✕</button></td>
+        <td><button type="button" aria-label="Remove this shortcut" onclick="this.closest('tr').remove()">✕</button></td>
     </tr>`);
 };
 
@@ -1323,24 +1451,24 @@ window.saveShortcuts = () => {
 // from the DOM on save/connect, no separate in-memory form state to keep in
 // sync.
 window.openSSHProfiles = () => {
-    if (document.getElementById("settingsEditor")) return;
+    if (document.getElementById("sshProfilesTable")) return;
 
     let rows = "";
     window.sshProfiles.forEach(p => {
         rows += `<tr data-ssh-row>
-                    <td><input type="text" class="sshProfile-name" placeholder="My server" value="${window._escapeHTML(p.name || "")}"></td>
-                    <td><input type="text" class="sshProfile-host" placeholder="example.com" value="${window._escapeHTML(p.host || "")}"></td>
-                    <td><input type="number" class="sshProfile-port" placeholder="22" value="${window._escapeHTML(p.port || "")}"></td>
-                    <td><input type="text" class="sshProfile-username" placeholder="root" value="${window._escapeHTML(p.username || "")}"></td>
+                    <td><input type="text" class="sshProfile-name" placeholder="My server" value="${window._escapeHtml(p.name || "")}"></td>
+                    <td><input type="text" class="sshProfile-host" placeholder="example.com" value="${window._escapeHtml(p.host || "")}"></td>
+                    <td><input type="number" class="sshProfile-port" placeholder="22" value="${window._escapeHtml(p.port || "")}"></td>
+                    <td><input type="text" class="sshProfile-username" placeholder="root" value="${window._escapeHtml(p.username || "")}"></td>
                     <td>
                         <div class="sshProfile-identity-wrap">
-                            <input type="text" class="sshProfile-identity" placeholder="~/.ssh/id_rsa (optional)" value="${window._escapeHTML(p.identityFile || "")}">
-                            <button type="button" onclick="window.browseSSHIdentityFile(this)">...</button>
+                            <input type="text" class="sshProfile-identity" placeholder="~/.ssh/id_rsa (optional)" value="${window._escapeHtml(p.identityFile || "")}">
+                            <button type="button" aria-label="Browse for identity file" onclick="window.browseSSHIdentityFile(this)">...</button>
                         </div>
                     </td>
                     <td>
                         <button type="button" onclick="window.connectSSHProfile(this)">Connect</button>
-                        <button type="button" onclick="this.closest('tr').remove()">✕</button>
+                        <button type="button" aria-label="Remove this profile" onclick="this.closest('tr').remove()">✕</button>
                     </td>
                 </tr>`;
     });
@@ -1362,7 +1490,7 @@ window.openSSHProfiles = () => {
                     ${rows}
                 </table>
                 <button type="button" onclick="window.addSSHProfileRow()">+ Add profile</button>
-                <h6 id="sshProfilesStatus">Loaded values from memory</h6>
+                <h6 id="sshProfilesStatus" aria-live="polite">Loaded values from memory</h6>
                 <br>`,
         buttons: [
             {label: "Save to Disk", action: "window.saveSSHProfiles()"},
@@ -1387,12 +1515,12 @@ window.addSSHProfileRow = () => {
         <td>
             <div class="sshProfile-identity-wrap">
                 <input type="text" class="sshProfile-identity" placeholder="~/.ssh/id_rsa (optional)">
-                <button type="button" onclick="window.browseSSHIdentityFile(this)">...</button>
+                <button type="button" aria-label="Browse for identity file" onclick="window.browseSSHIdentityFile(this)">...</button>
             </div>
         </td>
         <td>
             <button type="button" onclick="window.connectSSHProfile(this)">Connect</button>
-            <button type="button" onclick="this.closest('tr').remove()">✕</button>
+            <button type="button" aria-label="Remove this profile" onclick="this.closest('tr').remove()">✕</button>
         </td>
     </tr>`);
 };
@@ -1512,6 +1640,14 @@ window.runShellCommand = (cmd, label) => {
 };
 
 window.useAppShortcut = action => {
+    // While locked, only the LOCK_SCREEN action itself is allowed through
+    // (it just no-ops below since we're already locked) - everything else
+    // (tab switching, settings, dev tools, etc.) is blocked so the global
+    // OS-level shortcuts can't be used to peek/interact around the overlay.
+    if (window.mods && window.mods.lockscreen && window.mods.lockscreen.locked && action !== "LOCK_SCREEN") {
+        return false;
+    }
+
     switch(action) {
         case "COPY":
             window.term[window.currentTerm].clipboard.copy();
@@ -1585,6 +1721,9 @@ window.useAppShortcut = action => {
             return true;
         case "KB_PASSMODE":
             window.keyboard.togglePasswordMode();
+            return true;
+        case "LOCK_SCREEN":
+            if (window.mods && window.mods.lockscreen) window.mods.lockscreen.lock();
             return true;
         case "DEV_DEBUG":
             electron.remote.getCurrentWindow().webContents.toggleDevTools();
