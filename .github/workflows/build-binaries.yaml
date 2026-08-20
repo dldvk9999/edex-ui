@@ -1,6 +1,18 @@
 name: Build packaged binaries
 
-on: [push, pull_request, create]
+on:
+  push:
+  pull_request:
+  create:
+  # Fires exactly once when a Release is published (draft->public, or a
+  # brand-new release created straight as public) - see the PUBLISH_POLICY
+  # comment below for why this is the trigger that actually matters here.
+  release:
+    types: [published]
+  # Lets a maintainer manually re-run a publish build against a specific
+  # tag from the Actions UI/API - e.g. to backfill binaries for a release
+  # that didn't get them (see docs/06-build-and-deployment.md 6.5).
+  workflow_dispatch:
 
 # GITHUB_TOKEN needs write access to attach binaries to a GitHub Release
 # (electron-builder's --publish, added below).
@@ -8,11 +20,29 @@ permissions:
   contents: write
 
 env:
-  # electron-builder only actually uploads/publishes when this is "always" -
-  # gated to real tag pushes (v2.3.0, etc.) so ordinary branch/PR builds
-  # never attempt to touch Releases (and PR builds from forks wouldn't have
-  # write-scoped GITHUB_TOKEN access to do so anyway).
-  PUBLISH_POLICY: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) && 'always' || 'never' }}
+  # electron-builder only actually uploads/publishes when this is "always".
+  #
+  # Only `release` (published) and manual `workflow_dispatch` set it -
+  # deliberately NOT a `push` of a `refs/tags/v*` ref. That was the
+  # original design (see git history), but v2.3.1 shipped with zero
+  # binaries attached because of it: publishing a *new* release through
+  # GitHub's UI creates the underlying tag at the moment you click
+  # Publish, and that tag creation fires a `push` event alongside the
+  # `release` event, ~simultaneously. Both would set PUBLISH_POLICY to
+  # "always" under the old push-based rule, so two full build matrices
+  # would race to attach assets to the same release - electron-builder's
+  # GitHub publisher isn't built to have two independent processes
+  # uploading to the same release concurrently, and the failure mode is
+  # silent (jobs report success, nothing ends up attached). `release` is
+  # the one GitHub event actually designed for "a release was published,
+  # go build/attach binaries for it" and fires exactly once regardless of
+  # whether the tag was pre-existing or created by the publish action, so
+  # it alone is authoritative here. A bare `git push` of a version tag
+  # with no accompanying Release (e.g. from a local clone, publishing
+  # workflow) still runs the build for CI-validation purposes, it just
+  # won't auto-publish - use workflow_dispatch (or draft-then-publish a
+  # Release the normal way) for that instead.
+  PUBLISH_POLICY: ${{ (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && 'always' || 'never' }}
 
 jobs:
   build-linux:
