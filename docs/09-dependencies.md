@@ -14,7 +14,7 @@
 ## `src/package.json` — Runtime Dependencies
 
 - **Terminal**: `xterm`, `xterm-addon-attach`, `xterm-addon-fit`, `xterm-addon-ligatures`, `xterm-addon-webgl`, `node-pty`, `nan`
-- **Electron integration**: `@electron/remote`
+- **Electron integration**: `@electron/remote`, `electron-updater`
 - **Networking**: `ws`, `https-proxy-agent`, `geolite2-redist`, `maxmind`
 - **System information**: `systeminformation`, `which`, `username`, `shell-env`
 - **UI/design**: `augmented-ui`
