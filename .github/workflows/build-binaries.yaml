@@ -44,6 +44,18 @@ env:
   # Release the normal way) for that instead.
   PUBLISH_POLICY: ${{ (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && 'always' || 'never' }}
 
+  # electron-builder refuses to attach assets to a release published more
+  # than 2 hours ago, as a safety net against accidentally overwriting an
+  # old/unrelated release (electron-publish's GitHubPublisher checks
+  # Date.now() - publishedAt > 2h and skips - "GitHub release not created
+  # reason=existing release published more than 2 hours ago" - silently,
+  # exit 0, invisible from CI status same as everything else in this
+  # section). That's exactly what workflow_dispatch backfills are for
+  # though (re-running a publish attempt well after the fact, e.g. the
+  # v2.3.1 binaries this was originally written for - see 6.5.1), so it'd
+  # otherwise defeat the one thing workflow_dispatch exists to do here.
+  EP_GH_IGNORE_TIME: "true"
+
 jobs:
   # Catches exactly the mistake that caused v2.3.1 to ship with zero
   # binaries: package.json and src/package.json each have their own
