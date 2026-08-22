@@ -115,6 +115,7 @@ if (!fs.existsSync(shortcutsFile)) {
         { type: "app", trigger: "Ctrl+Shift+O", action: "SSH_PROFILES", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+F", action: "FUZZY_SEARCH", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+A", action: "LAUNCH_APP", enabled: true },
+        { type: "app", trigger: "Ctrl+Shift+D", action: "SPLIT_VIEW", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+G", action: "FIND_IN_TERMINAL", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+L", action: "FS_LIST_VIEW", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+H", action: "FS_DOTFILES", enabled: true },
