@@ -96,7 +96,8 @@ if (!fs.existsSync(settingsFile)) {
         fsListView: false,
         experimentalGlobeFeatures: false,
         experimentalFeatures: false,
-        restoreSession: false
+        restoreSession: false,
+        keyboardHidden: false
     }, "", 4));
     signale.info(`Default settings written to ${settingsFile}`);
 }
@@ -116,6 +117,7 @@ if (!fs.existsSync(shortcutsFile)) {
         { type: "app", trigger: "Ctrl+Shift+L", action: "FS_LIST_VIEW", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+H", action: "FS_DOTFILES", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+P", action: "KB_PASSMODE", enabled: true },
+        { type: "app", trigger: "Ctrl+Shift+B", action: "TOGGLE_KEYBOARD", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+Z", action: "LOCK_SCREEN", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+I", action: "DEV_DEBUG", enabled: false },
         { type: "app", trigger: "Ctrl+Shift+F5", action: "DEV_RELOAD", enabled: true },

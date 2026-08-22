@@ -420,7 +420,8 @@ async function initUI() {
     <section id="filesystem" style="width: 0px;" class="${window.settings.hideDotfiles ? "hideDotfiles" : ""} ${window.settings.fsListView ? "list-view" : ""}">
     </section>
     <section id="keyboard" style="opacity:0;">
-    </section>`;
+    </section>
+    <button type="button" id="kb_toggle_btn" aria-label="Toggle on-screen keyboard" onclick="window.toggleKeyboard()">⌨</button>`;
     window.keyboard = new Keyboard({
         layout: path.join(keyboardsDir, settings.keyboard+".json"),
         container: "keyboard"
@@ -445,13 +446,25 @@ async function initUI() {
     greeter.setAttribute("style", "opacity: 1;");
 
     document.getElementById("filesystem").setAttribute("style", "");
-    document.getElementById("keyboard").setAttribute("style", "");
-    document.getElementById("keyboard").setAttribute("class", "animation_state_1");
-    window.audioManager.keyboard.play();
+
+    // On-screen keyboard show/hide toggle (docs/10-todo.md 10.4): if the user
+    // previously hid the keyboard (persisted via settings.keyboardHidden),
+    // skip the reveal animation/sound entirely and start collapsed, rather
+    // than playing the reveal and immediately hiding it again.
+    if (window.settings.keyboardHidden) {
+        document.getElementById("keyboard").setAttribute("style", "display:none;");
+        document.getElementById("keyboard").setAttribute("class", "kb_collapsed");
+    } else {
+        document.getElementById("keyboard").setAttribute("style", "");
+        document.getElementById("keyboard").setAttribute("class", "animation_state_1");
+        window.audioManager.keyboard.play();
+    }
 
     await _delay(100);
 
-    document.getElementById("keyboard").setAttribute("class", "animation_state_1 animation_state_2");
+    if (!window.settings.keyboardHidden) {
+        document.getElementById("keyboard").setAttribute("class", "animation_state_1 animation_state_2");
+    }
 
     await _delay(1000);
 
@@ -459,7 +472,9 @@ async function initUI() {
 
     await _delay(100);
 
-    document.getElementById("keyboard").setAttribute("class", "");
+    if (!window.settings.keyboardHidden) {
+        document.getElementById("keyboard").setAttribute("class", "");
+    }
 
     await _delay(400);
 
@@ -1269,6 +1284,7 @@ window.writeSettingsFile = () => {
         hideDotfiles: (document.getElementById("settingsEditor-hideDotfiles").value === "true"),
         fsListView: (document.getElementById("settingsEditor-fsListView").value === "true"),
         restoreSession: (document.getElementById("settingsEditor-restoreSession").value === "true"),
+        keyboardHidden: window.settings.keyboardHidden || false,
         experimentalGlobeFeatures: (document.getElementById("settingsEditor-experimentalGlobeFeatures").value === "true"),
         experimentalFeatures: (document.getElementById("settingsEditor-experimentalFeatures").value === "true")
     };
@@ -1281,6 +1297,36 @@ window.writeSettingsFile = () => {
 
     fs.writeFileSync(settingsFile, JSON.stringify(window.settings, "", 4));
     document.getElementById("settingsEditorStatus").innerText = "New values written to settings.json file at "+new Date().toTimeString();
+};
+
+// On-screen keyboard show/hide toggle (docs/10-todo.md 10.4). Bound to the
+// #kb_toggle_btn button and the TOGGLE_KEYBOARD app shortcut (default
+// Ctrl+Shift+B). Persists to settings.keyboardHidden so the choice survives
+// a restart (see the boot-time check in initUI() above). display:none is
+// applied/removed here (not just via the kb_collapsed CSS class) so the
+// keyboard's flex-layout space is actually reclaimed when hidden, not just
+// left invisible.
+window.toggleKeyboard = () => {
+    const kb = document.getElementById("keyboard");
+    if (!kb) return;
+
+    const hidden = kb.classList.contains("kb_collapsed");
+
+    if (hidden) {
+        kb.style.removeProperty("display");
+        // Force a reflow before removing the class below, so the display
+        // change above doesn't get coalesced with it and skip the transition.
+        void kb.offsetHeight;
+        kb.classList.remove("kb_collapsed");
+    } else {
+        kb.classList.add("kb_collapsed");
+        setTimeout(() => {
+            if (kb.classList.contains("kb_collapsed")) kb.style.display = "none";
+        }, 400);
+    }
+
+    window.settings.keyboardHidden = hidden ? false : true;
+    fs.writeFileSync(settingsFile, JSON.stringify(window.settings, "", 4));
 };
 
 window.toggleFullScreen = () => {
@@ -1314,6 +1360,7 @@ window.openShortcutsHelp = () => {
         "FS_LIST_VIEW": "Toggle between list and grid view in the file browser.",
         "FS_DOTFILES": "Toggle hidden files and directories in the file browser.",
         "KB_PASSMODE": "Toggle the on-screen keyboard's \"Password Mode\", which allows you to safely<br>type sensitive information even if your screen might be recorded (disable visual input feedback).",
+        "TOGGLE_KEYBOARD": "Show or hide the on-screen keyboard (also toggleable via the ⌨ button at the bottom of the screen).",
         "LOCK_SCREEN": "Lock the screen behind a password prompt (set one first in Settings). This is a privacy<br>screen to deter casual snooping, not a hardened security boundary.",
         "DEV_DEBUG": "Open Chromium Dev Tools, for debugging purposes.",
         "DEV_RELOAD": "Trigger front-end hot reload."
@@ -1732,6 +1779,9 @@ window.useAppShortcut = action => {
             return true;
         case "KB_PASSMODE":
             window.keyboard.togglePasswordMode();
+            return true;
+        case "TOGGLE_KEYBOARD":
+            window.toggleKeyboard();
             return true;
         case "LOCK_SCREEN":
             if (window.mods && window.mods.lockscreen) window.mods.lockscreen.lock();
