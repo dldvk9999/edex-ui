@@ -15,4 +15,6 @@ This directory contains a comprehensive analysis of the eDEX-UI codebase, split 
 | [07-security.md](./07-security.md) | Security-relevant notes and known trade-offs |
 | [08-known-limitations.md](./08-known-limitations.md) | Structural limitations worth knowing about |
 | [09-dependencies.md](./09-dependencies.md) | Full dependency listing (build toolchain vs. runtime) |
+| [10-todo.md](./10-todo.md) | Feature TODO / proposals, prioritized backlog |
+| [11-plugins.md](./11-plugins.md) | Plugin system - trust model, folder layout, loading, API |
 | [10-todo.md](./10-todo.md) | Feature proposals / TODO — community requests and codebase-gap analysis |

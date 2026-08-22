@@ -68,6 +68,7 @@ const settingsDir = remote.app.getPath("userData");
 const themesDir = path.join(settingsDir, "themes");
 const keyboardsDir = path.join(settingsDir, "keyboards");
 const fontsDir = path.join(settingsDir, "fonts");
+const pluginsDir = path.join(settingsDir, "plugins");
 const settingsFile = path.join(settingsDir, "settings.json");
 const shortcutsFile = path.join(settingsDir, "shortcuts.json");
 const lastWindowStateFile = path.join(settingsDir, "lastWindowState.json");
@@ -183,6 +184,58 @@ window._loadTheme = theme => {
     window.theme.r = theme.colors.r;
     window.theme.g = theme.colors.g;
     window.theme.b = theme.colors.b;
+};
+
+// Plugin system (docs/10-todo.md 10.2, full writeup in docs/11-plugins.md).
+// Deliberately NOT sandboxed: this app already runs with
+// nodeIntegration:true/contextIsolation:false (docs/07-security.md), so a
+// plugin's main.js gets exactly the same trust and access any other
+// renderer-context code already has (window.mods, window.term, Node's
+// require(), etc.) - this introduces no new attack surface, since only
+// plugins the user has explicitly placed in their own userData/plugins
+// folder are ever loaded (never anything remote/network-sourced). Called
+// once, at the end of initUI(), after every core module/global a plugin
+// might reasonably want already exists.
+window._loadPlugins = () => {
+    window.plugins = {};
+
+    if (!fs.existsSync(pluginsDir)) return;
+
+    fs.readdirSync(pluginsDir, {withFileTypes: true}).forEach(entry => {
+        if (!entry.isDirectory()) return;
+
+        let pluginDir = path.join(pluginsDir, entry.name);
+        let manifestPath = path.join(pluginDir, "plugin.json");
+        if (!fs.existsSync(manifestPath)) return;
+
+        let manifest;
+        try {
+            manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+        } catch (e) {
+            ipc.send("log", "warn", `[plugins] Could not parse ${entry.name}/plugin.json: ${e.message}`);
+            return;
+        }
+
+        if (manifest.enabled === false) return;
+        if (!manifest.main) {
+            ipc.send("log", "warn", `[plugins] ${entry.name}/plugin.json has no "main" field, skipping`);
+            return;
+        }
+
+        try {
+            let plugin = require(path.join(pluginDir, manifest.main));
+            window.plugins[entry.name] = {manifest, module: plugin};
+            if (plugin && typeof plugin.activate === "function") {
+                plugin.activate();
+            }
+            ipc.send("log", "info", `[plugins] Loaded "${manifest.name || entry.name}"${manifest.version ? " v"+manifest.version : ""}`);
+        } catch (e) {
+            // One broken/misbehaving plugin shouldn't take the rest of the
+            // app down - same defensive posture as registerKeyboardShortcuts'
+            // per-entry try/catch for user-editable shortcuts.json.
+            ipc.send("log", "error", `[plugins] Failed to load "${entry.name}": ${e.message}`);
+        }
+    });
 };
 
 function initGraphicalErrorHandling() {
@@ -633,6 +686,11 @@ async function initUI() {
     if (process.platform === "darwin" || !remote.app.isPackaged) {
         window.updateCheck = new UpdateChecker();
     }
+
+    // Load user plugins last, after every core module/global (window.mods,
+    // window.term, window.settings, window.theme, etc.) a plugin might
+    // reasonably want to use already exists. See docs/11-plugins.md.
+    window._loadPlugins();
 }
 
 // Fired by the "Preferences…" application menu item (main process, see
