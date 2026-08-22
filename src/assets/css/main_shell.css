@@ -134,6 +134,57 @@ div#main_shell_innercontainer pre#terminal4 {
     top: -400%;
 }
 
+/* Split panes (docs/10-todo.md, "Split panes"). Overrides the tab-stacking
+   trick above (position:relative + per-id negative `top` offsets +
+   opacity/z-index toggling, which only ever shows one pre at a time) with a
+   real side-by-side CSS Grid layout for exactly two chosen panes. The
+   pre#terminalN rules above each carry two ID selectors (container + the
+   terminal's own id), which outrank a single-ID-plus-class selector on
+   specificity alone regardless of source order - !important is used
+   deliberately below to guarantee this wins rather than silently losing to
+   that stacking hack. Completely inert (matches nothing) unless JS adds
+   .split-active - the normal single-tab display above is untouched by any
+   of this. */
+div#main_shell_innercontainer.split-active {
+    display: grid !important;
+    grid-template-columns: 1fr 0.15vh 1fr;
+}
+
+div#main_shell_innercontainer.split-active > pre {
+    display: none !important;
+    position: static !important;
+    opacity: 1 !important;
+    z-index: auto !important;
+    top: auto !important;
+    height: 100% !important;
+    width: 100% !important;
+}
+
+div#main_shell_innercontainer.split-active > pre.split-pane-a {
+    display: block !important;
+    grid-column: 1;
+}
+
+div#main_shell_innercontainer.split-active > pre.split-pane-b {
+    display: block !important;
+    grid-column: 3;
+}
+
+div#main_shell_innercontainer.split-active > pre.split-pane-focused {
+    outline: 0.1vh solid rgba(var(--color_r), var(--color_g), var(--color_b), 0.6);
+    outline-offset: -0.1vh;
+}
+
+div#main_shell_innercontainer > div.split-divider {
+    display: none;
+}
+
+div#main_shell_innercontainer.split-active > div.split-divider {
+    display: block;
+    grid-column: 2;
+    background: rgba(var(--color_r), var(--color_g), var(--color_b), 0.4);
+}
+
 .terminal .xterm-viewport {
     overflow: hidden;
     cursor: default;
