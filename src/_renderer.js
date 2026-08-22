@@ -343,7 +343,11 @@ async function displayTitleScreen() {
 
     await _delay(100);
 
-    title.setAttribute("style", `background-color: rgb(${window.theme.r}, ${window.theme.g}, ${window.theme.b});border-bottom: 5px solid rgb(${window.theme.r}, ${window.theme.g}, ${window.theme.b});`);
+    // Note: the border is reserved at its final 5px width on all four sides here
+    // (top/left/right transparent, bottom colored) rather than only bottom, so the
+    // next step below can flip border-color without changing border-width/sides -
+    // avoids a layout height jump (see docs/10-todo.md 10.3, "boot title shift" bug).
+    title.setAttribute("style", `background-color: rgb(${window.theme.r}, ${window.theme.g}, ${window.theme.b});border: 5px solid transparent;border-bottom-color: rgb(${window.theme.r}, ${window.theme.g}, ${window.theme.b});`);
 
     await _delay(300);
 
@@ -615,6 +619,13 @@ async function initUI() {
         window.updateCheck = new UpdateChecker();
     }
 }
+
+// Fired by the "Preferences…" application menu item (main process, see
+// registerApplicationMenu() in src/_boot.js - docs/10-todo.md 10.3, "'Preferences'
+// menu item does nothing"). Reuses the existing in-app Settings editor.
+ipc.on("open-settings", () => {
+    if (window.openSettings) window.openSettings();
+});
 
 // Real in-app auto-update, main-process side in _boot.js (docs/10-todo.md
 // 10.3). Not gated behind a settings toggle for the same reason the
