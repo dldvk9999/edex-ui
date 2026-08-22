@@ -45,6 +45,7 @@
 - **Shortcut customization**: `shortcuts.json` — supports both app actions and arbitrary shell command execution, editable in-app via `Ctrl+Shift+K` (add/remove custom command shortcuts, edit triggers, toggle enabled - takes effect immediately, no reload needed) as well as by hand-editing the file
 - **Sound pack**: toggleable sound effects with volume control (13 wav files — boot, keypress, access granted/denied, alarm, panel switching, etc.)
 - **Proxy support** (`#1050`, added in a recent session): `settings.proxy` or standard `HTTP(S)_PROXY` environment variables for use on restricted networks
+- **Plugin system**: drop a folder with a `plugin.json` manifest + entry script into `userData/plugins` to run your own code inside eDEX-UI (full renderer access, not sandboxed - see `docs/11-plugins.md` for the trust model). A disabled-by-default example plugin ships in that folder on first launch
 
 ## 4.8 Other
 - **Application launcher**: `Ctrl+Shift+A` opens a search-and-launch modal for installed programs (Windows Start Menu shortcuts, macOS `/Applications` bundles, Linux `.desktop` entries)

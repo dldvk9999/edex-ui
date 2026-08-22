@@ -54,6 +54,7 @@ const kblayoutsDir = path.join(electron.app.getPath("userData"), "keyboards");
 const innerKblayoutsDir = path.join(__dirname, "assets/kb_layouts");
 const fontsDir = path.join(electron.app.getPath("userData"), "fonts");
 const innerFontsDir = path.join(__dirname, "assets/fonts");
+const pluginsDir = path.join(electron.app.getPath("userData"), "plugins");
 
 // Unset proxy env variables to avoid connection problems on the internal websockets
 // See #222
@@ -161,6 +162,60 @@ function mirrorAssetDir(innerDir, outerDir, binary) {
 mirrorAssetDir(innerThemesDir, themesDir, false);
 mirrorAssetDir(innerKblayoutsDir, kblayoutsDir, false);
 mirrorAssetDir(innerFontsDir, fontsDir, true);
+
+// Plugin system (docs/10-todo.md 10.2, full writeup in docs/11-plugins.md).
+// Unlike the asset mirrors above (themes/keyboards/fonts, re-synced on every
+// launch from src/assets/*), this folder is only ever created once and never
+// touched again afterwards - user-installed plugins living in it must never
+// be silently overwritten by an app update. A disabled-by-default example
+// plugin and a README are dropped in on that first creation only, as a
+// starting reference for anyone who goes looking.
+if (!fs.existsSync(pluginsDir)) {
+    fs.mkdirSync(pluginsDir);
+    fs.writeFileSync(path.join(pluginsDir, "README.md"), `# eDEX-UI plugins
+
+Drop a folder in here for each plugin. Each folder needs:
+
+- \`plugin.json\` - a manifest: \`{"name": "...", "version": "...", "main": "main.js", "enabled": true}\`
+- Whatever JS file \`main\` points to, exporting \`{ activate() { ... } }\`
+
+Plugins run with the exact same access as the rest of the app (Node's
+\`require()\`, every \`window.*\` global - \`window.mods\`, \`window.term\`,
+\`window.settings\`, etc.) - eDEX-UI already runs with nodeIntegration
+enabled (see docs/07-security.md in the source repo), so this introduces
+no new attack surface: only local plugins you've placed here yourself are
+ever loaded, never anything remote. Only install plugins you trust, same
+as you would a shortcuts.json shell command.
+
+See docs/11-plugins.md in the source repo for the full API reference.
+
+An example plugin ("example-hello-world") is included below, disabled by
+default (\`"enabled": false\` in its plugin.json) - flip that to \`true\` to
+try it.
+`);
+
+    let examplePluginDir = path.join(pluginsDir, "example-hello-world");
+    fs.mkdirSync(examplePluginDir);
+    fs.writeFileSync(path.join(examplePluginDir, "plugin.json"), JSON.stringify({
+        name: "Hello World Example",
+        version: "1.0.0",
+        description: "Minimal example plugin - logs a message and the current theme's name once eDEX-UI finishes booting.",
+        main: "main.js",
+        enabled: false
+    }, "", 4));
+    fs.writeFileSync(path.join(examplePluginDir, "main.js"), `// Example eDEX-UI plugin - see docs/11-plugins.md for the full API.
+module.exports = {
+    activate() {
+        // \`window\` here is the exact same global the rest of the renderer
+        // uses - window.mods, window.term, window.settings, window.theme,
+        // Modal, etc. are all already available by the time this runs.
+        console.log("[example-hello-world] Loaded! Current theme:", window.settings.theme);
+    }
+};
+`);
+
+    signale.info(`Created plugins dir with README + disabled example at ${pluginsDir}`);
+}
 
 // Version history logging
 const versionHistoryPath = path.join(electron.app.getPath("userData"), "versions_log.json");
