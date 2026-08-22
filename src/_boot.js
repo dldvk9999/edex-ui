@@ -1,5 +1,5 @@
 const signale = require("signale");
-const {app, BrowserWindow, dialog, shell} = require("electron");
+const {app, BrowserWindow, dialog, shell, Menu} = require("electron");
 
 process.on("uncaughtException", e => {
     signale.fatal(e);
@@ -172,6 +172,50 @@ if (typeof versionHistory[version] === "undefined") {
 }
 fs.writeFileSync(versionHistoryPath, JSON.stringify(versionHistory, 0, 2), {encoding:"utf-8"});
 
+// Explicit application menu with a real "Preferences" item wired to the in-app
+// Settings UI (window.openSettings(), see src/_renderer.js). Without this, Electron
+// falls back to its own default menu template, which has no Preferences entry
+// anywhere - on macOS in particular, Cocoa/AppKit still surfaces a "Preferences…"
+// item as OS boilerplate even then, and clicking it did nothing since nothing was
+// ever wired to it (docs/10-todo.md 10.3, "'Preferences' menu item does nothing").
+function registerApplicationMenu() {
+    const isMac = process.platform === "darwin";
+    const openPreferences = () => {
+        if (win && !win.isDestroyed()) win.webContents.send("open-settings");
+    };
+
+    const template = [
+        ...(isMac ? [{
+            label: app.name,
+            submenu: [
+                {role: "about"},
+                {type: "separator"},
+                {label: "Preferences…", accelerator: "CmdOrCtrl+,", click: openPreferences},
+                {type: "separator"},
+                {role: "services"},
+                {type: "separator"},
+                {role: "hide"},
+                {role: "hideOthers"},
+                {role: "unhide"},
+                {type: "separator"},
+                {role: "quit"}
+            ]
+        }] : []),
+        {
+            label: "File",
+            submenu: [
+                ...(isMac ? [] : [{label: "Preferences…", accelerator: "CmdOrCtrl+,", click: openPreferences}, {type: "separator"}]),
+                isMac ? {role: "close"} : {role: "quit"}
+            ]
+        },
+        {role: "editMenu"},
+        {role: "viewMenu"},
+        {role: "windowMenu"}
+    ];
+
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 function createWindow(settings) {
     signale.info("Creating window...");
 
@@ -214,6 +258,8 @@ function createWindow(settings) {
         protocol: 'file:',
         slashes: true
     }));
+
+    registerApplicationMenu();
 
     signale.complete("Frontend window created!");
     win.show();
