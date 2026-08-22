@@ -134,16 +134,22 @@ div.modal_popup table td {
     font-size: 1.7vh;
 }
 
-div.modal_popup table#settingsEditor tbody {
+div.modal_popup table#settingsEditor tbody, div.modal_popup table#themeEditor tbody {
 	display: block;
 	position: relative;
 	max-height: 60vh;
 	overflow: auto;
 }
 
-div.modal_popup table#settingsEditor tbody tr:first-child {
+div.modal_popup table#settingsEditor tbody tr:first-child, div.modal_popup table#themeEditor tbody tr:first-child {
 	position: sticky;
 	top: 0px;
+}
+
+div.modal_popup td input[type="color"] {
+    padding: 0;
+    height: 3vh;
+    cursor: pointer;
 }
 
 div.modal_popup table:not(#settingsEditor) td:first-child {
@@ -215,7 +221,7 @@ div.modal_popup summary+table {
 
 /* Settings editor modal */
 
-h6#settingsEditorStatus {
+h6#settingsEditorStatus, h6#themeEditorStatus {
     margin: 0;
     margin-top: 1vh;
     font-size: 1.5vh;

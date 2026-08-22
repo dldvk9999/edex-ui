@@ -690,6 +690,144 @@ window.themeChanger = theme => {
     }, 100);
 };
 
+// Theme editor GUI (docs/10-todo.md 10.2, a long-requested community feature -
+// themes previously required hand-editing raw JSON). Exposes color pickers +
+// font dropdowns for the fields most themes actually differ on (full schema
+// in docs/05-design-theme.md); fields it doesn't expose (cursorStyle,
+// colorFilter, injectCSS, terminal.selection's alpha) are preserved as-is by
+// editing a full clone of the source theme rather than building a fresh
+// object from just the exposed fields. Live-previews every change via the
+// same window._loadTheme() the boot sequence and hotswitch (themeChanger,
+// above) already use - no reload needed while editing, only on Save.
+window.openThemeEditor = themeName => {
+    if (document.getElementById("themeEditor")) return;
+    themeName = themeName || window.settings.theme;
+
+    let sourcePath = path.join(themesDir, themeName+".json");
+    let draft;
+    try {
+        // Read fresh from disk (not require()) so editing never mutates the
+        // require()-cached object window.theme is also built from.
+        draft = JSON.parse(fs.readFileSync(sourcePath, "utf-8"));
+    } catch (e) {
+        window.activeThemeEditorErrorModal = new Modal({
+            type: "error",
+            title: "Could not open theme",
+            message: `Failed to read "${window._escapeHtml(themeName)}.json": ${window._escapeHtml(e.message)}`
+        });
+        return;
+    }
+    draft.colors = draft.colors || {};
+    draft.cssvars = draft.cssvars || {};
+    draft.terminal = draft.terminal || {};
+    draft.globe = draft.globe || {};
+
+    // Snapshot of whatever theme is actually applied right now, so Cancel
+    // (closing without hitting Save) can restore it exactly, discarding any
+    // live-preview edits.
+    let previouslyApplied = JSON.parse(JSON.stringify(window.theme));
+
+    const Color = require("color");
+    const toHex = c => { try { return Color(c).hex(); } catch (e) { return "#000000"; } };
+    const fontOptions = ["Fira Code", "Fira Mono", "United Sans Light", "United Sans Medium"];
+    const fontSelect = (id, current) => `<select id="${id}">${fontOptions.map(f =>
+        `<option value="${f}"${f === current ? " selected" : ""}>${f}</option>`).join("")}</select>`;
+    const colorField = (id, hex) => `<input type="color" id="${id}" value="${toHex(hex)}">`;
+
+    window.keyboard.detach();
+
+    new Modal({
+        type: "custom",
+        title: `Theme Editor <i>(${window._escapeHtml(themeName)})</i>`,
+        html: `<table id="themeEditor">
+                    <tr><th>Field</th><th>Value</th></tr>
+                    <tr><td>Accent color</td><td>${colorField("themeEditor-accent", `rgb(${draft.colors.r || 0}, ${draft.colors.g || 0}, ${draft.colors.b || 0})`)}</td></tr>
+                    <tr><td>Black</td><td>${colorField("themeEditor-black", draft.colors.black || "#000000")}</td></tr>
+                    <tr><td>Background (light_black)</td><td>${colorField("themeEditor-light_black", draft.colors.light_black || "#05080d")}</td></tr>
+                    <tr><td>Grey</td><td>${colorField("themeEditor-grey", draft.colors.grey || "#262828")}</td></tr>
+                    <tr><td>Red (errors)</td><td>${colorField("themeEditor-red", draft.colors.red || "#ff0000")}</td></tr>
+                    <tr><td>Yellow (warnings)</td><td>${colorField("themeEditor-yellow", draft.colors.yellow || "#ffff00")}</td></tr>
+                    <tr><td>Main font</td><td>${fontSelect("themeEditor-font_main", draft.cssvars.font_main)}</td></tr>
+                    <tr><td>Light font</td><td>${fontSelect("themeEditor-font_main_light", draft.cssvars.font_main_light)}</td></tr>
+                    <tr><td>Terminal font</td><td>${fontSelect("themeEditor-terminal_font", draft.terminal.fontFamily)}</td></tr>
+                    <tr><td>Terminal foreground</td><td>${colorField("themeEditor-term_fg", draft.terminal.foreground || "#ffffff")}</td></tr>
+                    <tr><td>Terminal background</td><td>${colorField("themeEditor-term_bg", draft.terminal.background || "#000000")}</td></tr>
+                    <tr><td>Terminal cursor</td><td>${colorField("themeEditor-term_cursor", draft.terminal.cursor || "#ffffff")}</td></tr>
+                    <tr><td>Globe base</td><td>${colorField("themeEditor-globe_base", draft.globe.base || "#000000")}</td></tr>
+                    <tr><td>Globe marker</td><td>${colorField("themeEditor-globe_marker", draft.globe.marker || "#ffffff")}</td></tr>
+                    <tr><td>Save as</td><td><input type="text" id="themeEditor-name" value="${window._escapeHtml(themeName)}" aria-label="Theme name to save as"></td></tr>
+                </table>
+                <h6 id="themeEditorStatus" aria-live="polite"></h6>`,
+        buttons: [
+            {label: "Save Theme", action: "window.saveThemeEditor()"}
+        ]
+    }, () => {
+        delete window.activeThemeEditorDraft;
+        // Restore whatever was actually applied before opening the editor -
+        // any live-preview edits that weren't saved are discarded here.
+        window._loadTheme(previouslyApplied);
+        window.keyboard.attach();
+        window.term[window.currentTerm].term.focus();
+    });
+
+    window.activeThemeEditorDraft = {draft, sourcePath};
+
+    const applyPreview = () => {
+        let rgb;
+        try {
+            rgb = Color(document.getElementById("themeEditor-accent").value).rgb().object();
+        } catch (e) {
+            rgb = {r: draft.colors.r, g: draft.colors.g, b: draft.colors.b};
+        }
+        draft.colors.r = Math.round(rgb.r);
+        draft.colors.g = Math.round(rgb.g);
+        draft.colors.b = Math.round(rgb.b);
+        draft.colors.black = document.getElementById("themeEditor-black").value;
+        draft.colors.light_black = document.getElementById("themeEditor-light_black").value;
+        draft.colors.grey = document.getElementById("themeEditor-grey").value;
+        draft.colors.red = document.getElementById("themeEditor-red").value;
+        draft.colors.yellow = document.getElementById("themeEditor-yellow").value;
+        draft.cssvars.font_main = document.getElementById("themeEditor-font_main").value;
+        draft.cssvars.font_main_light = document.getElementById("themeEditor-font_main_light").value;
+        draft.terminal.fontFamily = document.getElementById("themeEditor-terminal_font").value;
+        draft.terminal.foreground = document.getElementById("themeEditor-term_fg").value;
+        draft.terminal.background = document.getElementById("themeEditor-term_bg").value;
+        draft.terminal.cursor = document.getElementById("themeEditor-term_cursor").value;
+        draft.terminal.cursorAccent = draft.terminal.cursor;
+        draft.globe.base = document.getElementById("themeEditor-globe_base").value;
+        draft.globe.marker = document.getElementById("themeEditor-globe_marker").value;
+        draft.globe.pin = draft.globe.marker;
+        draft.globe.satellite = draft.globe.marker;
+
+        window._loadTheme(draft);
+    };
+
+    document.querySelectorAll("#themeEditor input[type=color], #themeEditor select").forEach(el => {
+        el.addEventListener("input", applyPreview);
+        el.addEventListener("change", applyPreview);
+    });
+};
+
+window.saveThemeEditor = () => {
+    if (!window.activeThemeEditorDraft) return;
+    let {draft} = window.activeThemeEditorDraft;
+
+    let rawName = document.getElementById("themeEditor-name").value || "custom-theme";
+    // Local desktop app, so this isn't a privilege-boundary concern the way
+    // it would be server-side - but a stray "../" in a text field silently
+    // writing outside themesDir is still sloppy, so strip path separators
+    // and traversal sequences before building the target path.
+    let safeName = rawName.replace(/[/\\:*?"<>|]/g, "").replace(/\.\./g, "").trim() || "custom-theme";
+    let targetPath = path.join(themesDir, safeName+".json");
+    if (!targetPath.startsWith(themesDir)) {
+        document.getElementById("themeEditorStatus").innerText = "Invalid theme name.";
+        return;
+    }
+
+    fs.writeFileSync(targetPath, JSON.stringify(draft, "", 4));
+    document.getElementById("themeEditorStatus").innerText = `Saved to ${safeName}.json at ${new Date().toTimeString()}. Select it from Settings > theme to use it on next launch.`;
+};
+
 window.remakeKeyboard = layout => {
     document.getElementById("keyboard").innerHTML = "";
     window.keyboard = new Keyboard({
@@ -1080,7 +1218,8 @@ window.openSettings = async () => {
                         <td><select id="settingsEditor-theme">
                             <option>${window.settings.theme}</option>
                             ${themes}
-                        </select></td>
+                        </select>
+                        <button type="button" onclick="window.openThemeEditor(document.getElementById('settingsEditor-theme').value)">Edit Theme</button></td>
                     </tr>
                     <tr>
                         <td>termFontSize</td>
@@ -1361,6 +1500,7 @@ window.openShortcutsHelp = () => {
         "FS_DOTFILES": "Toggle hidden files and directories in the file browser.",
         "KB_PASSMODE": "Toggle the on-screen keyboard's \"Password Mode\", which allows you to safely<br>type sensitive information even if your screen might be recorded (disable visual input feedback).",
         "TOGGLE_KEYBOARD": "Show or hide the on-screen keyboard (also toggleable via the ⌨ button at the bottom of the screen).",
+        "THEME_EDITOR": "Open the theme editor (color pickers + live preview for the current theme; also reachable via Settings > theme > Edit Theme).",
         "LOCK_SCREEN": "Lock the screen behind a password prompt (set one first in Settings). This is a privacy<br>screen to deter casual snooping, not a hardened security boundary.",
         "DEV_DEBUG": "Open Chromium Dev Tools, for debugging purposes.",
         "DEV_RELOAD": "Trigger front-end hot reload."
@@ -1782,6 +1922,9 @@ window.useAppShortcut = action => {
             return true;
         case "TOGGLE_KEYBOARD":
             window.toggleKeyboard();
+            return true;
+        case "THEME_EDITOR":
+            window.openThemeEditor();
             return true;
         case "LOCK_SCREEN":
             if (window.mods && window.mods.lockscreen) window.mods.lockscreen.lock();
