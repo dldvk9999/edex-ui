@@ -118,6 +118,7 @@ if (!fs.existsSync(shortcutsFile)) {
         { type: "app", trigger: "Ctrl+Shift+H", action: "FS_DOTFILES", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+P", action: "KB_PASSMODE", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+B", action: "TOGGLE_KEYBOARD", enabled: true },
+        { type: "app", trigger: "Ctrl+Shift+T", action: "THEME_EDITOR", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+Z", action: "LOCK_SCREEN", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+I", action: "DEV_DEBUG", enabled: false },
         { type: "app", trigger: "Ctrl+Shift+F5", action: "DEV_RELOAD", enabled: true },
