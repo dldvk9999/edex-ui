@@ -47,6 +47,7 @@
 - **Proxy support** (`#1050`, added in a recent session): `settings.proxy` or standard `HTTP(S)_PROXY` environment variables for use on restricted networks
 
 ## 4.8 Other
+- **Application launcher**: `Ctrl+Shift+A` opens a search-and-launch modal for installed programs (Windows Start Menu shortcuts, macOS `/Applications` bundles, Linux `.desktop` entries)
 - Fuzzy finder (Ctrl+Shift+F) — quick file/command search
 - SSH profile manager (Ctrl+Shift+O) — save host/port/username/identity file per profile, one-click connect opens a new tab and runs `ssh` immediately
 - Real in-app auto-update on Windows/Linux packaged builds (`electron-updater`, checks on startup, downloads/installs only after explicit confirmation each step) — skipped on macOS (unsigned builds, electron-updater's macOS backend needs code signing) and dev runs, where the app instead falls back to a lightweight GitHub-Releases-polling notification with a manual download link
