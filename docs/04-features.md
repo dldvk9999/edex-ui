@@ -32,6 +32,7 @@
 - 19 built-in layouts: US/GB/DE/FR(+BEPO)/ES(+LAT)/IT/PT-BR/NL/SV/DA/HU/TR(Q/F) plus alternate English layouts (DVORAK/COLEMAK/NORMAN/WORKMAN)
 - Touchscreen support (touch-event handling)
 - Passmode support (visually hides input feedback while typing passwords), bound to a keyboard shortcut
+- Show/hide toggle: a small ⌨ button fixed at the bottom of the screen (or `Ctrl+Shift+B` by default) slides the keyboard down out of view and reclaims its layout space; the choice persists across restarts (`settings.keyboardHidden`)
 
 ## 4.6 Media/Document Viewers
 - Built-in media player (audio playback via `howler.js`)
