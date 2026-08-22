@@ -15,6 +15,11 @@ table#processContainer td.header:hover {
     cursor: pointer;
 }
 
+table#processContainer td.header:focus-visible {
+    outline: 0.2vh solid rgb(var(--color_r), var(--color_g), var(--color_b));
+    outline-offset: -0.2vh;
+}
+
 table#processContainer td.pid {
     width: 5vw;
 }
