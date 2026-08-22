@@ -594,6 +594,7 @@ async function initUI() {
             <pre id="terminal2" role="tabpanel" aria-label="Shell tab 2"></pre>
             <pre id="terminal3" role="tabpanel" aria-label="Shell tab 3"></pre>
             <pre id="terminal4" role="tabpanel" aria-label="Shell tab 4"></pre>
+            <div class="split-divider"></div>
         </div>`;
     window.term = {
         0: new Terminal({
@@ -613,6 +614,22 @@ async function initUI() {
     // handlers in window.useAppShortcut, which resolve visual position -> slot
     // through this array instead of assuming position === slot number.
     window.tabOrder = [1, 2, 3, 4];
+
+    // Split panes (docs/10-todo.md) - lets either pane regain
+    // window.currentTerm (for the on-screen keyboard, COPY/PASTE,
+    // CWD-follow, etc.) just by clicking into it, same as real terminal
+    // input already does at the DOM level. Delegated once here, at the
+    // permanent #main_shell_innercontainer level (its pre children never
+    // get recreated), rather than attached per-pane.
+    document.getElementById("main_shell_innercontainer").addEventListener("focusin", e => {
+        if (!window.splitView) return;
+        let pre = e.target.closest("pre[id^='terminal']");
+        if (!pre) return;
+        let n = Number(pre.id.replace("terminal", ""));
+        if (n === window.splitView.a) window._focusSplitPane("a");
+        else if (n === window.splitView.b) window._focusSplitPane("b");
+    });
+
     window.term[0].onprocesschange = p => {
         window.tabProcessNames[0] = p;
         window.updateShellTabLabel(0, p);
@@ -1041,6 +1058,12 @@ window._moveTabFocus = number => {
 };
 
 window.focusShellTab = number => {
+    // A regular tab switch always exits split view first (docs/10-todo.md
+    // "Split panes") - leaving it active while jumping to some unrelated
+    // third tab would desync currentTerm from what's actually visible in
+    // either pane, so this keeps the two states from ever conflicting.
+    if (window.splitView) window._exitSplitView();
+
     window.audioManager.folder.play();
 
     if (number !== window.currentTerm && window.term[number]) {
@@ -1072,6 +1095,109 @@ window.focusShellTab = number => {
             }, 500);
         }).catch(() => {});
     }
+};
+
+// Split panes (docs/10-todo.md, the last remaining backlog item).
+// Deliberately minimal rather than a general multi-pane layout engine:
+// exactly two panes, side-by-side only - no vertical stacking, no 3+ panes,
+// no persistence across restarts (lastSession.json's schema is left
+// untouched). The existing single-tab display (the position:relative +
+// per-id negative `top` offset stacking trick in main_shell.css) is
+// completely unaffected when split is off, so this is purely additive and
+// carries no risk to the tab system every other feature already depends on.
+// Toggled via the SPLIT_VIEW app shortcut (default Ctrl+Shift+D).
+window.splitView = null; // null, or {a: termIndex, b: termIndex, focused: "a"|"b"}
+
+window.toggleSplitView = () => {
+    if (window.splitView) {
+        window._exitSplitView();
+    } else {
+        window._enterSplitView();
+    }
+};
+
+window._enterSplitView = () => {
+    if (window.splitView) return;
+
+    let a = window.currentTerm;
+    // Partner pane: whichever other tab is already open, left-to-right by
+    // slot number (main tab counts as slot 0). If nothing else is open yet,
+    // spawn extra tab 1 to use as the partner.
+    let openTabs = [0, 1, 2, 3, 4].filter(n => window.term[n]);
+    let b = openTabs.find(n => n !== a);
+
+    const start = bIndex => {
+        window.splitView = {a, b: bIndex, focused: "a"};
+
+        document.getElementById("main_shell_innercontainer").classList.add("split-active");
+        document.getElementById("terminal"+a).classList.add("split-pane-a", "split-pane-focused");
+        document.getElementById("terminal"+bIndex).classList.add("split-pane-b");
+
+        // Let the grid layout above actually apply before asking xterm's
+        // fit addon to measure the (now half-width) containers - measuring
+        // synchronously would still see the old, pre-split dimensions.
+        requestAnimationFrame(() => {
+            window.term[a].fit();
+            window.term[bIndex].fit();
+        });
+
+        window.term[a].term.focus();
+    };
+
+    if (typeof b === "number") {
+        start(b);
+    } else {
+        // autoFocus=false: spawnShellTab's own default behavior would call
+        // focusShellTab(1) ~500ms later, which (per the guard added there)
+        // would immediately tear this split back down again since
+        // window.splitView is already set by then. start() below handles
+        // focus/fit itself once the tab is actually ready.
+        window.spawnShellTab(1, undefined, false).then(() => start(1)).catch(() => {});
+    }
+};
+
+window._exitSplitView = () => {
+    if (!window.splitView) return;
+
+    let {a, b} = window.splitView;
+    document.getElementById("main_shell_innercontainer").classList.remove("split-active");
+    [a, b].forEach(n => {
+        let el = document.getElementById("terminal"+n);
+        if (el) el.classList.remove("split-pane-a", "split-pane-b", "split-pane-focused");
+    });
+    window.splitView = null;
+
+    // Restore normal single-pane display for whichever tab is currentTerm
+    // (mirrors focusShellTab's own class-application loop).
+    for (let n = 0; n <= 4; n++) {
+        let termEl = document.getElementById("terminal"+n);
+        if (termEl) termEl.setAttribute("class", (n === window.currentTerm) ? "active" : "");
+    }
+    requestAnimationFrame(() => {
+        if (window.term[window.currentTerm]) window.term[window.currentTerm].fit();
+    });
+};
+
+// Moves window.currentTerm (and everything that follows it - the on-screen
+// keyboard, COPY/PASTE, CWD-linked file browser) to whichever split pane
+// was just interacted with, without touching the other pane's visibility -
+// unlike focusShellTab's single-pane switch, both panes stay on screen the
+// whole time here. Called from the delegated focusin listener set up
+// alongside #main_shell_innercontainer, above.
+window._focusSplitPane = pane => {
+    if (!window.splitView) return;
+    let n = window.splitView[pane];
+    if (typeof n !== "number" || !window.term[n]) return;
+
+    window.splitView.focused = pane;
+    window.currentTerm = n;
+
+    document.querySelectorAll("#main_shell_innercontainer > pre").forEach(el => {
+        el.classList.remove("split-pane-focused");
+    });
+    document.getElementById("terminal"+n).classList.add("split-pane-focused");
+
+    window.fsDisp.followTab();
 };
 
 // Spawns tab `number`'s backend TTY and hooks up its client Terminal.
@@ -1554,6 +1680,7 @@ window.openShortcutsHelp = () => {
         "SSH_PROFILES": "Open the SSH profile manager.",
         "FUZZY_SEARCH": "Search for entries in the current working directory.",
         "LAUNCH_APP": "Open the application launcher (search and open an installed program).",
+        "SPLIT_VIEW": "Toggle a side-by-side split view of two terminal panes (click into either pane to move keyboard focus to it).",
         "FIND_IN_TERMINAL": "Search for text in the current terminal's scrollback buffer.",
         "FS_LIST_VIEW": "Toggle between list and grid view in the file browser.",
         "FS_DOTFILES": "Toggle hidden files and directories in the file browser.",
@@ -1970,6 +2097,9 @@ window.useAppShortcut = action => {
         case "LAUNCH_APP":
             window.activeAppLauncher = new AppLauncher();
             return true;
+        case "SPLIT_VIEW":
+            window.toggleSplitView();
+            return true;
         case "FIND_IN_TERMINAL":
             window.activeTerminalSearch = new TerminalSearch();
             return true;
@@ -2085,6 +2215,13 @@ window.onresize = () => {
         if (typeof window.term[window.currentTerm] !== "undefined") {
             window.term[window.currentTerm].fit();
         }
+    }
+    // Split panes (docs/10-todo.md) - currentTerm above only ever covers
+    // one of the two visible panes, so the other needs its own fit() call.
+    if (window.splitView) {
+        [window.splitView.a, window.splitView.b].forEach(n => {
+            if (window.term[n]) window.term[n].fit();
+        });
     }
 };
 

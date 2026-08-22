@@ -8,6 +8,7 @@
 - Custom color filters (theme's `colorFilter` array — chainable negate/grayscale/lighten/darken/saturate/etc.)
 - Font ligature support (`xterm-addon-ligatures`)
 - WebGL-accelerated rendering (`xterm-addon-webgl`)
+- Split view (`Ctrl+Shift+D`): shows two tabs side-by-side; click into either pane to move keyboard/on-screen-keyboard/CWD-follow focus to it. Exactly two panes, no persistence across restarts - see `docs/10-todo.md` 10.0 for the full scope note
 
 ## 4.2 System Monitoring
 - Live CPU usage graph (sparkline built on `smoothie.js`)
