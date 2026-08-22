@@ -1495,6 +1495,7 @@ window.openShortcutsHelp = () => {
         "SHORTCUTS": "List and edit available keyboard shortcuts.",
         "SSH_PROFILES": "Open the SSH profile manager.",
         "FUZZY_SEARCH": "Search for entries in the current working directory.",
+        "LAUNCH_APP": "Open the application launcher (search and open an installed program).",
         "FIND_IN_TERMINAL": "Search for text in the current terminal's scrollback buffer.",
         "FS_LIST_VIEW": "Toggle between list and grid view in the file browser.",
         "FS_DOTFILES": "Toggle hidden files and directories in the file browser.",
@@ -1907,6 +1908,9 @@ window.useAppShortcut = action => {
             return true;
         case "FUZZY_SEARCH":
             window.activeFuzzyFinder = new FuzzyFinder();
+            return true;
+        case "LAUNCH_APP":
+            window.activeAppLauncher = new AppLauncher();
             return true;
         case "FIND_IN_TERMINAL":
             window.activeTerminalSearch = new TerminalSearch();
