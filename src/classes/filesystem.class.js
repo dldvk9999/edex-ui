@@ -41,13 +41,74 @@ class FilesystemDisplay {
         const container = document.getElementById(opts.parentId);
         container.innerHTML = `
             <h3 class="title"><p>FILESYSTEM</p><p id="fs_disp_title_dir"></p></h3>
-            <div id="fs_disp_container">
+            <div id="fs_disp_container" role="listbox" aria-label="File browser">
             </div>
             <div id="fs_space_bar">
                 <h1>EXIT DISPLAY</h1>
                 <h3>Calculating available space...</h3><progress value="100" max="100"></progress>
             </div>`;
         this.filesContainer = document.getElementById("fs_disp_container");
+
+        // Keyboard navigation for the file browser grid (docs/10-todo.md 10.3
+        // a11y gap - previously click-only <div>s with no keyboard access at
+        // all). Uses role="listbox"/"option" rather than "grid" - items are
+        // laid out in a CSS grid whose column count varies with container
+        // width (repeat(auto-fill, ...) in filesystem.css), so a true 2D
+        // grid-nav (column-aware Up/Down) isn't practical here; linear
+        // Left/Right/Up/Down through DOM order is the pragmatic middle ground.
+        // A single delegated listener (added once, here) rather than one per
+        // item, since the item list is entirely rebuilt on every render().
+        this._syncRovingTabindex = () => {
+            const items = Array.from(this.filesContainer.querySelectorAll('[role="option"]')).filter(el => el.offsetParent !== null);
+            items.forEach((el, i) => el.setAttribute("tabindex", i === 0 ? "0" : "-1"));
+        };
+
+        this.filesContainer.addEventListener("keydown", e => {
+            const items = Array.from(this.filesContainer.querySelectorAll('[role="option"]')).filter(el => el.offsetParent !== null);
+            if (items.length === 0) return;
+
+            let idx = items.indexOf(document.activeElement);
+            if (idx === -1) idx = 0;
+
+            switch (e.key) {
+                case "ArrowRight":
+                case "ArrowDown":
+                    e.preventDefault();
+                    idx = (idx + 1) % items.length;
+                    break;
+                case "ArrowLeft":
+                case "ArrowUp":
+                    e.preventDefault();
+                    idx = (idx - 1 + items.length) % items.length;
+                    break;
+                case "Home":
+                    e.preventDefault();
+                    idx = 0;
+                    break;
+                case "End":
+                    e.preventDefault();
+                    idx = items.length - 1;
+                    break;
+                case "Enter":
+                case " ":
+                    e.preventDefault();
+                    document.activeElement.click();
+                    return;
+                default:
+                    return;
+            }
+
+            items.forEach(el => el.setAttribute("tabindex", "-1"));
+            items[idx].setAttribute("tabindex", "0");
+            items[idx].focus();
+        });
+
+        document.getElementById("fs_space_bar").addEventListener("keydown", e => {
+            if ((e.key === "Enter" || e.key === " ") && document.getElementById("fs_space_bar").getAttribute("role") === "button") {
+                e.preventDefault();
+                document.getElementById("fs_space_bar").click();
+            }
+        });
         this.space_bar = {
             text: document.querySelector("#fs_space_bar > h3"),
             bar: document.querySelector("#fs_space_bar > progress")
@@ -481,7 +542,7 @@ class FilesystemDisplay {
                     e.lastAccessed = "--";
                 }
 
-                filesDOM += `<div class="fs_disp_${e.type}${hidden} animationWait" onclick='${cmdPrefix+cmd+cmdSuffix}'>
+                filesDOM += `<div class="fs_disp_${e.type}${hidden} animationWait" role="option" tabindex="-1" aria-selected="false" aria-label="${window._escapeHtml(e.name)} (${window._escapeHtml(type)})" onclick='${cmdPrefix+cmd+cmdSuffix}'>
                                 <svg viewBox="0 0 ${icon.width} ${icon.height}" fill="${this.iconcolor}">
                                     ${icon.svg}
                                 </svg>
@@ -492,11 +553,18 @@ class FilesystemDisplay {
                             </div>`;
             });
             this.filesContainer.innerHTML = filesDOM;
+            this._syncRovingTabindex();
 
             if (this.filesContainer.getAttribute("class").endsWith("disks")) {
                 document.getElementById("fs_space_bar").setAttribute("onclick", "window.fsDisp.render(window.fsDisp.cwd)");
+                document.getElementById("fs_space_bar").setAttribute("role", "button");
+                document.getElementById("fs_space_bar").setAttribute("tabindex", "0");
+                document.getElementById("fs_space_bar").setAttribute("aria-label", "Exit disk display");
             } else {
                 document.getElementById("fs_space_bar").setAttribute("onclick", "");
+                document.getElementById("fs_space_bar").removeAttribute("role");
+                document.getElementById("fs_space_bar").removeAttribute("tabindex");
+                document.getElementById("fs_space_bar").removeAttribute("aria-label");
             }
 
             // Render animation

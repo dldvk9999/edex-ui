@@ -5,6 +5,8 @@ class Keyboard {
         const layout = JSON.parse(require("fs").readFileSync(opts.layout, {encoding: "utf-8"}));
         this.ctrlseq = ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""];
         this.container = document.getElementById(opts.container);
+        this.container.setAttribute("role", "group");
+        this.container.setAttribute("aria-label", "On-screen keyboard");
 
         this.linkedToTerm = true;
         this.detach = () => {
@@ -112,6 +114,28 @@ class Keyboard {
                         key.dataset[property] = keyObj[property];
                     }
                 });
+
+                // ARIA semantics (docs/10-todo.md 10.3 a11y gap - previously no
+                // role/label at all, so assistive tech had no way to identify
+                // what any given key does). Not made keyboard-tabbable
+                // (tabindex) on purpose - this keyboard is operated by
+                // pointer/touch/switch-scanning tools that work off the
+                // accessibility tree's role/label, not literal Tab order, and
+                // adding one would turn the whole app into a ~60-stop tab trap.
+                key.setAttribute("role", "button");
+                let ariaLabel;
+                if (keyObj.cmd === " ") {
+                    ariaLabel = "Space";
+                } else if (keyObj.cmd === "\r") {
+                    ariaLabel = "Enter";
+                } else if (keyObj.name) {
+                    ariaLabel = keyObj.name.includes("_")
+                        ? keyObj.name.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+                        : keyObj.name;
+                } else {
+                    ariaLabel = "Key";
+                }
+                key.setAttribute("aria-label", ariaLabel);
 
                 document.getElementById(row).appendChild(key);
             });

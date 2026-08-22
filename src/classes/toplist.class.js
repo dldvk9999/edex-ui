@@ -8,7 +8,16 @@ class Toplist {
         this._element.setAttribute("id", "mod_toplist");
         this._element.innerHTML = `<h1>TOP PROCESSES<i>PID | NAME | CPU | MEM</i></h1><br>
         <table id="mod_toplist_table"></table>`;
+        this._element.setAttribute("role", "button");
+        this._element.setAttribute("tabindex", "0");
+        this._element.setAttribute("aria-label", "Top processes - open full process list");
         this._element.onclick = this.processList;
+        this._element.addEventListener("keydown", e => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                this.processList();
+            }
+        });
 
         this.parent.append(this._element);
 
@@ -223,13 +232,25 @@ class Toplist {
         let headers = document.getElementsByClassName("header");
         for (let header of headers){
             let title = header.textContent;
-            header.addEventListener("click", () => {
+            header.setAttribute("role", "columnheader");
+            header.setAttribute("aria-sort", "none");
+            header.setAttribute("tabindex", "0");
+            const activate = () => {
                 for (let header of headers) {
                     header.textContent = header.textContent.replace('\u25B2', "").replace('\u25BC', "");
+                    header.setAttribute("aria-sort", "none");
                 }
                 setSortKey(title);
                 if (sortKey){
                     header.textContent = `${title}${ascending ? '\u25B2' : '\u25BC'}`;
+                    header.setAttribute("aria-sort", ascending ? "ascending" : "descending");
+                }
+            };
+            header.addEventListener("click", activate);
+            header.addEventListener("keydown", e => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    activate();
                 }
             });
         }
