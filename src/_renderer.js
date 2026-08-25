@@ -704,11 +704,34 @@ async function initUI() {
         window.updateCheck = new UpdateChecker();
     }
 
+    // Grid-based layout editor (docs/10-todo.md, "Draggable/resizable grid
+    // layout"). Instantiated once here, after every panel it can manage
+    // (mod_column_left/right, main_shell, filesystem, keyboard) already
+    // exists in the DOM, and *before* plugins load so a plugin's own DOM
+    // insertions never race with a stored custom layout being applied.
+    // applyStoredLayout() is a no-op (and touches nothing) unless the user
+    // has actually customized something before - see docs/10-todo.md.
+    window.layoutEditor = new LayoutEditor();
+    window.layoutEditor.applyStoredLayout();
+
     // Load user plugins last, after every core module/global (window.mods,
     // window.term, window.settings, window.theme, etc.) a plugin might
     // reasonably want to use already exists. See docs/11-plugins.md.
     window._loadPlugins();
 }
+
+// Toggle for the grid-based layout editor (docs/10-todo.md). Bound to the
+// EDIT_LAYOUT app shortcut (default Ctrl+Shift+E). All the actual drag/
+// resize/persistence logic lives in LayoutEditor (src/classes/layoutEditor.class.js);
+// this is just the same toggle-wrapper shape as window.toggleSplitView/
+// window.toggleKeyboard above.
+window.toggleLayoutEditor = () => {
+    if (window.layoutEditor.active) {
+        window.layoutEditor.exit();
+    } else {
+        window.layoutEditor.enter();
+    }
+};
 
 // Fired by the "Preferences…" application menu item (main process, see
 // registerApplicationMenu() in src/_boot.js - docs/10-todo.md 10.3, "'Preferences'
@@ -1608,6 +1631,7 @@ window.writeSettingsFile = () => {
         fsListView: (document.getElementById("settingsEditor-fsListView").value === "true"),
         restoreSession: (document.getElementById("settingsEditor-restoreSession").value === "true"),
         keyboardHidden: window.settings.keyboardHidden || false,
+        panelLayout: window.settings.panelLayout || {},
         experimentalGlobeFeatures: (document.getElementById("settingsEditor-experimentalGlobeFeatures").value === "true"),
         experimentalFeatures: (document.getElementById("settingsEditor-experimentalFeatures").value === "true")
     };
@@ -1687,6 +1711,7 @@ window.openShortcutsHelp = () => {
         "KB_PASSMODE": "Toggle the on-screen keyboard's \"Password Mode\", which allows you to safely<br>type sensitive information even if your screen might be recorded (disable visual input feedback).",
         "TOGGLE_KEYBOARD": "Show or hide the on-screen keyboard (also toggleable via the ⌨ button at the bottom of the screen).",
         "THEME_EDITOR": "Open the theme editor (color pickers + live preview for the current theme; also reachable via Settings > theme > Edit Theme).",
+        "EDIT_LAYOUT": "Toggle grid-based layout editing mode: drag a panel by its title bar to move it, or drag its edges to resize it (both snap to the grid). Nothing changes until you actually drag something.",
         "LOCK_SCREEN": "Lock the screen behind a password prompt (set one first in Settings). This is a privacy<br>screen to deter casual snooping, not a hardened security boundary.",
         "DEV_DEBUG": "Open Chromium Dev Tools, for debugging purposes.",
         "DEV_RELOAD": "Trigger front-end hot reload."
@@ -2117,6 +2142,9 @@ window.useAppShortcut = action => {
             return true;
         case "THEME_EDITOR":
             window.openThemeEditor();
+            return true;
+        case "EDIT_LAYOUT":
+            window.toggleLayoutEditor();
             return true;
         case "LOCK_SCREEN":
             if (window.mods && window.mods.lockscreen) window.mods.lockscreen.lock();

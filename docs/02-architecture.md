@@ -49,7 +49,7 @@ module.exports = { Foo };
 
 The `module.exports` is included so the class is loadable both via `require()` in a Node context (nodeIntegration) and as a global via a plain `<script>` tag (which registers the global `class Foo`) — a dual-access approach.
 
-All 18 classes live in `src/classes/*.class.js`:
+All 19 classes live in `src/classes/*.class.js`:
 
 | Class | File size | Role |
 |---|---|---|
@@ -59,6 +59,7 @@ All 18 classes live in `src/classes/*.class.js`:
 | `Netstat` | ~12K | Network connection monitoring, GeoIP lookup |
 | `LocationGlobe` | ~12K | 3D globe (built on encom-globe) |
 | `Toplist` | ~12K | Process list (`top`-like) |
+| `LayoutEditor` | ~10K | Grid-based panel drag/resize edit mode (docs/10-todo.md) |
 | `CpuInfo` | ~8K | CPU usage graph |
 | `MediaPlayer`, `Modal`, `FuzzyFinder` | ~8K | Media player, modal dialogs, Ctrl+Shift+F fuzzy search |
 | `Clock`, `ConnInfo`, `RamWatcher`, `SysInfo`, `HardwareInspector`, `DocReader`, `AudioFx`, `UpdateChecker` | 4-8K | Various smaller feature-specific modules |
