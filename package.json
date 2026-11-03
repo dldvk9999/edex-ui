@@ -93,9 +93,19 @@
             "x64",
             "ia32"
           ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
         }
       ],
       "icon": "media/icon.ico"
+    },
+    "portable": {
+      "artifactName": "eDEX-UI-Windows-Portable-${arch}.exe"
     },
     "nsis": {
       "artifactName": "eDEX-UI-Windows-${arch}.exe",
