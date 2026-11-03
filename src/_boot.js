@@ -98,7 +98,8 @@ if (!fs.existsSync(settingsFile)) {
         experimentalGlobeFeatures: false,
         experimentalFeatures: false,
         restoreSession: false,
-        keyboardHidden: false
+        keyboardHidden: false,
+        panelLayout: {}
     }, "", 4));
     signale.info(`Default settings written to ${settingsFile}`);
 }
@@ -122,6 +123,7 @@ if (!fs.existsSync(shortcutsFile)) {
         { type: "app", trigger: "Ctrl+Shift+P", action: "KB_PASSMODE", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+B", action: "TOGGLE_KEYBOARD", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+T", action: "THEME_EDITOR", enabled: true },
+        { type: "app", trigger: "Ctrl+Shift+E", action: "EDIT_LAYOUT", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+Z", action: "LOCK_SCREEN", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+I", action: "DEV_DEBUG", enabled: false },
         { type: "app", trigger: "Ctrl+Shift+F5", action: "DEV_RELOAD", enabled: true },
