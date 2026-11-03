@@ -45,8 +45,28 @@ class LayoutEditor {
 
     applyStoredLayout() {
         let saved = window.settings.panelLayout || {};
+        let applied = false;
         Object.keys(saved).forEach(id => {
-            if (this.panels[id]) this._applyRect(id, saved[id]);
+            if (this.panels[id]) {
+                this._applyRect(id, saved[id]);
+                applied = true;
+            }
+        });
+        if (applied) this._refitTerminals();
+    }
+
+    // xterm only recomputes its cols/rows when told to (fit()), and nothing
+    // else observes main_shell's size (no ResizeObserver anywhere in the app) -
+    // so any time this editor changes the terminal shell's rendered geometry,
+    // the terminal(s) have to be refit explicitly or they keep their old
+    // dimensions until the next real window resize. window.onresize
+    // (src/_renderer.js) is already the one place that fits the currently
+    // visible pane(s) (currentTerm plus both split-view panes), so reuse it
+    // rather than duplicating that logic here. Deferred a frame so it measures
+    // the geometry that was just applied, not the previous one.
+    _refitTerminals() {
+        requestAnimationFrame(() => {
+            if (typeof window.onresize === "function") window.onresize();
         });
     }
 
@@ -58,7 +78,9 @@ class LayoutEditor {
         document.body.classList.add("layout-edit-mode");
         this._buildOverlay();
         this._buildToolbar();
+        this._seedAll();
         Object.keys(this.panels).forEach(id => this._wirePanel(id));
+        this._refitTerminals();
     }
 
     exit() {
@@ -90,6 +112,7 @@ class LayoutEditor {
         });
 
         this._activeRects = {};
+        this._refitTerminals();
     }
 
     resetLayout() {
@@ -109,8 +132,9 @@ class LayoutEditor {
         if (this.active) {
             // Re-seed from the now-default rendered geometry so dragging/
             // resizing keeps working without having to leave edit mode.
-            Object.keys(this.panels).forEach(id => this._seed(id));
+            this._seedAll();
         }
+        this._refitTerminals();
     }
 
     // ---- DOM scaffolding ----
@@ -140,7 +164,8 @@ class LayoutEditor {
         let el = document.getElementById(def.el);
         if (!el) return;
 
-        this._seed(panelId);
+        // Seeding is done for every panel up front, in enter()/resetLayout()
+        // via _seedAll() - not per-panel here, see _seedAll() for why.
         el.classList.add("layout-panel-target");
 
         // Drag handle: reuse the existing h3.title bar where the panel has
@@ -201,18 +226,44 @@ class LayoutEditor {
             return;
         }
 
+        let rect = (this._seedRects && this._seedRects[panelId]) || this._measureRect(panelId);
+        if (rect) this._applyRect(panelId, rect);
+    }
+
+    // Measures a panel's current rendered box as a grid rect, without
+    // touching it. Split out from _seed so _seedAll can measure every panel
+    // *before* applying any of them.
+    _measureRect(panelId) {
         let el = document.getElementById(this.panels[panelId].el);
-        if (!el) return;
+        if (!el) return null;
 
         let box = el.getBoundingClientRect();
         let cell = this._cellPx();
-        let rect = {
+        return {
             col: this._clamp(Math.round(box.left / cell.w), 0, this.cols - this.minColSpan),
             row: this._clamp(Math.round(box.top / cell.h), 0, this.rows - this.minRowSpan),
             colSpan: this._clamp(Math.round(box.width / cell.w), this.minColSpan, this.cols),
             rowSpan: this._clamp(Math.round(box.height / cell.h), this.minRowSpan, this.rows)
         };
-        this._applyRect(panelId, rect);
+    }
+
+    // Two passes - measure everything, then apply everything. All five panels
+    // are siblings in <body>'s flex row (see main.css), so the moment one of
+    // them is switched to position:absolute it leaves the flex flow and the
+    // rest reflow/re-center around the gap. Seeding one panel at a time (as
+    // this originally did) therefore measured every panel after the first
+    // from an already-shifted layout, so entering edit mode visibly jumped
+    // the panels, contradicting the "never visually jumps" intent above. Panels
+    // that already have a saved rect are applied as-is and skipped for
+    // measuring - they were already out of flow before this ran.
+    _seedAll() {
+        let saved = window.settings.panelLayout || {};
+        this._seedRects = {};
+        Object.keys(this.panels).forEach(id => {
+            if (!saved[id]) this._seedRects[id] = this._measureRect(id);
+        });
+        Object.keys(this.panels).forEach(id => this._seed(id));
+        this._seedRects = {};
     }
 
     _applyRect(panelId, rect) {
@@ -239,6 +290,7 @@ class LayoutEditor {
         window.settings.panelLayout = window.settings.panelLayout || {};
         window.settings.panelLayout[panelId] = Object.assign({}, this._activeRects[panelId]);
         this._persist();
+        this._refitTerminals();
     }
 
     _persist() {
