@@ -1,0 +1,126 @@
+/* Grid-based layout editor (docs/10-todo.md, "Draggable/resizable grid
+   layout" - see src/classes/layoutEditor.class.js). Every rule below only
+   ever matches while <body> carries .layout-edit-mode, or targets elements
+   that class's JS creates/removes itself - completely inert otherwise, so
+   it can't affect the normal layout described in docs/02-architecture.md /
+   docs/05-design-theme.md. */
+
+#layoutEditorOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 900;
+    pointer-events: none;
+    background-image:
+        linear-gradient(90deg, rgba(var(--color_r), var(--color_g), var(--color_b), 0.25) 0.092vh, transparent 0.092vh),
+        linear-gradient(rgba(var(--color_r), var(--color_g), var(--color_b), 0.25) 0.092vh, transparent 0.092vh);
+    background-size: var(--layout-cell-w, 2.5vw) var(--layout-cell-h, 5vh);
+}
+
+#layoutEditorToolbar {
+    position: fixed;
+    top: 0.5vh;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 920;
+    display: flex;
+    align-items: center;
+    gap: 1vh;
+    padding: 0.6vh 1.2vh;
+    background: var(--color_light_black);
+    border: 0.092vh solid rgba(var(--color_r), var(--color_g), var(--color_b), 0.6);
+    color: rgb(var(--color_r), var(--color_g), var(--color_b));
+    font-family: var(--font_main);
+    font-size: 1.1vh;
+    letter-spacing: 0.05vh;
+    white-space: nowrap;
+}
+
+#layoutEditorToolbar button {
+    font-family: var(--font_main);
+    background: transparent;
+    color: rgb(var(--color_r), var(--color_g), var(--color_b));
+    border: 0.092vh solid rgba(var(--color_r), var(--color_g), var(--color_b), 0.6);
+    padding: 0.3vh 0.9vh;
+    font-size: 1.1vh;
+    cursor: pointer;
+}
+
+#layoutEditorToolbar button:hover {
+    background: rgba(var(--color_r), var(--color_g), var(--color_b), 0.2);
+}
+
+/* Applied by JS to every registered panel for the duration of edit mode
+   (docs/10-todo.md registry: mod_column_left/right, main_shell, filesystem,
+   keyboard). position/left/top/width/height themselves are set inline by
+   LayoutEditor._applyRect, not here - this only covers the visual "you can
+   grab this" affordance. */
+.layout-panel-target {
+    z-index: 910;
+    outline: 0.092vh dashed rgba(var(--color_r), var(--color_g), var(--color_b), 0.6);
+    outline-offset: -0.092vh;
+    transition: none !important;
+}
+
+.layout-panel-target.layout-dragging {
+    z-index: 950;
+    opacity: 0.85;
+    outline-style: solid;
+}
+
+.layout-drag-grip {
+    position: relative;
+    z-index: 5;
+    text-align: center;
+    font-size: 1vh;
+    letter-spacing: 0.2vh;
+    padding: 0.3vh 0;
+    background: rgba(var(--color_r), var(--color_g), var(--color_b), 0.15);
+    user-select: none;
+}
+
+.layout-drag-handle {
+    cursor: grab;
+}
+.layout-drag-handle:active {
+    cursor: grabbing;
+}
+
+.layout-handle {
+    position: absolute;
+    z-index: 6;
+    background: transparent;
+}
+.layout-handle:hover {
+    background: rgba(var(--color_r), var(--color_g), var(--color_b), 0.5);
+}
+
+.layout-handle-n,
+.layout-handle-s {
+    left: 0.6vh;
+    right: 0.6vh;
+    height: 0.9vh;
+    cursor: ns-resize;
+}
+.layout-handle-n {
+    top: -0.45vh;
+}
+.layout-handle-s {
+    bottom: -0.45vh;
+}
+
+.layout-handle-e,
+.layout-handle-w {
+    top: 0.6vh;
+    bottom: 0.6vh;
+    width: 0.9vh;
+    cursor: ew-resize;
+}
+.layout-handle-w {
+    left: -0.45vh;
+}
+.layout-handle-e {
+    right: -0.45vh;
+}
